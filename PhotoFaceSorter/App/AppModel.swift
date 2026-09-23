@@ -70,6 +70,70 @@ final class AppModel: ObservableObject {
         store.samples.filter { $0.personID == person.id }
     }
 
+    /// 批量更新人脸样本
+    func updateSamples(_ updated: [FaceSample]) {
+        var samples = store.samples
+        for sample in updated {
+            if let index = samples.firstIndex(where: { $0.id == sample.id }) {
+                samples[index] = sample
+            }
+        }
+        store.samples = samples
+        cleanupEmptyPeople()
+        reload()
+    }
+
+    /// 拆分：把选中的人脸移入一个新建人物
+    @discardableResult
+    func split(_ samplesToSplit: [FaceSample], name: String) -> Person {
+        let person = Person(name: name.trimmingCharacters(in: .whitespacesAndNewlines))
+        var samples = store.samples
+        let ids = Set(samplesToSplit.map { $0.id })
+        for index in samples.indices where ids.contains(samples[index].id) {
+            samples[index].personID = person.id
+        }
+        store.samples = samples
+
+        var people = store.people
+        people.append(person)
+        store.people = people
+
+        cleanupEmptyPeople()
+        reload()
+        return person
+    }
+
+    /// 把选中的人脸移动到指定人物（nil = 移出人物）
+    func moveSamples(_ samplesToMove: [FaceSample], to person: Person?) {
+        var samples = store.samples
+        let ids = Set(samplesToMove.map { $0.id })
+        for index in samples.indices where ids.contains(samples[index].id) {
+            samples[index].personID = person?.id
+            samples[index].isIgnored = false
+        }
+        store.samples = samples
+        cleanupEmptyPeople()
+        reload()
+    }
+
+    /// 标记为非人物人脸（屏蔽）
+    func ignoreSamples(_ samplesToIgnore: [FaceSample]) {
+        var samples = store.samples
+        let ids = Set(samplesToIgnore.map { $0.id })
+        for index in samples.indices where ids.contains(samples[index].id) {
+            samples[index].isIgnored = true
+            samples[index].personID = nil
+        }
+        store.samples = samples
+        cleanupEmptyPeople()
+        reload()
+    }
+
+    private func cleanupEmptyPeople() {
+        let used = Set(store.samples.compactMap { $0.personID })
+        store.people = store.people.filter { used.contains($0.id) }
+    }
+
     // MARK: - 规则
 
     func upsertRule(_ rule: ClassifyRule) {

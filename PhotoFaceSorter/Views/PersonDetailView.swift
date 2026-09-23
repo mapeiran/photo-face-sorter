@@ -2,10 +2,23 @@ import SwiftUI
 
 struct PersonDetailView: View {
     @EnvironmentObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+
     @State var person: Person
 
+    private enum AlertKind { case rename, split }
+    @State private var alertKind: AlertKind?
     @State private var newName = ""
-    @State private var showRename = false
+    @State private var splitName = ""
+
+    @State private var showMerge = false
+    @State private var showMove = false
+
+    @State private var selectMode = false
+    @State private var selected: Set<UUID> = []
+
+    private var samples: [FaceSample] { model.samples(of: person) }
+    private var selectedSamples: [FaceSample] { samples.filter { selected.contains($0.id) } }
 
     var body: some View {
         List {
@@ -15,34 +28,146 @@ struct PersonDetailView: View {
                     Spacer()
                     Button("重命名") {
                         newName = person.name
-                        showRename = true
+                        alertKind = .rename
                     }
                 }
             }
 
-            Section("照片（\(model.samples(of: person).count)）") {
-                if model.samples(of: person).isEmpty {
+            Section {
+                Toggle("选择模式（批量调整）", isOn: $selectMode)
+                    .onChange(of: selectMode) { if !$0 { selected.removeAll() } }
+            }
+
+            Section("照片（\(samples.count)）") {
+                if samples.isEmpty {
                     Text("暂无样本人脸").foregroundColor(.secondary)
                 } else {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 80), spacing: 6)], spacing: 6) {
-                        ForEach(model.samples(of: person)) { sample in
-                            AssetThumbnailView(localIdentifier: sample.assetLocalIdentifier,
-                                               boundingBox: sample.boundingBox,
-                                               side: 80)
-                                .cornerRadius(6)
+                        ForEach(samples) { sample in
+                            sampleCell(sample)
                         }
                     }
                 }
             }
         }
         .navigationTitle(person.displayName)
-        .alert("重命名", isPresented: $showRename) {
-            TextField("名称", text: $newName)
-            Button("取消", role: .cancel) {}
-            Button("保存") {
-                model.renamePerson(person, to: newName)
-                person.name = newName
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Menu {
+                    Button { showMerge = true } label: {
+                        Label("合并到其他人物", systemImage: "arrow.triangle.merge")
+                    }
+                    Button(role: .destructive) {
+                        model.deletePerson(person)
+                        dismiss()
+                    } label: {
+                        Label("删除该人物", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
             }
+        }
+        .safeAreaInset(edge: .bottom) {
+            if selectMode && !selected.isEmpty {
+                HStack(spacing: 16) {
+                    Button("移出为新人") {
+                        splitName = ""
+                        alertKind = .split
+                    }
+                    Button("移到其他人物") { showMove = true }
+                    Button("标记非人物", role: .destructive) {
+                        model.ignoreSamples(selectedSamples)
+                        clearSelection()
+                        ensurePersonExists()
+                    }
+                }
+                .font(.subheadline)
+                .padding()
+                .background(.ultraThinMaterial)
+            }
+        }
+        .alert(alertKind == .rename ? "重命名" : "拆分新人物",
+               isPresented: Binding(get: { alertKind != nil },
+                                    set: { if !$0 { alertKind = nil } })) {
+            if alertKind == .rename {
+                TextField("名称", text: $newName)
+                Button("取消", role: .cancel) { alertKind = nil }
+                Button("保存") {
+                    model.renamePerson(person, to: newName)
+                    person.name = newName
+                    alertKind = nil
+                }
+            } else {
+                TextField("新人物名称", text: $splitName)
+                Button("取消", role: .cancel) { alertKind = nil }
+                Button("创建") {
+                    model.split(selectedSamples, name: splitName)
+                    clearSelection()
+                    alertKind = nil
+                }
+            }
+        }
+        .sheet(isPresented: $showMerge) {
+            PersonPickerView(title: "合并到", people: model.people.filter { $0.id != person.id }) { target in
+                model.mergePerson(person, into: target)
+                dismiss()
+            }
+        }
+        .sheet(isPresented: $showMove) {
+            PersonPickerView(title: "移动到", people: model.people.filter { $0.id != person.id }) { target in
+                model.moveSamples(selectedSamples, to: target)
+                clearSelection()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func sampleCell(_ sample: FaceSample) -> some View {
+        let thumb = AssetThumbnailView(localIdentifier: sample.assetLocalIdentifier,
+                                       boundingBox: sample.boundingBox,
+                                       side: 80)
+            .cornerRadius(6)
+
+        if selectMode {
+            Button {
+                if selected.contains(sample.id) { selected.remove(sample.id) }
+                else { selected.insert(sample.id) }
+            } label: {
+                thumb.overlay(alignment: .topTrailing) {
+                    Image(systemName: selected.contains(sample.id) ? "checkmark.circle.fill" : "circle")
+                        .foregroundColor(selected.contains(sample.id) ? .accentColor : .white)
+                        .padding(2)
+                }
+            }
+            .buttonStyle(.plain)
+        } else {
+            thumb.contextMenu {
+                Button {
+                    model.moveSamples([sample], to: nil)
+                    ensurePersonExists()
+                } label: {
+                    Label("移出人物", systemImage: "person.badge.minus")
+                }
+                Button(role: .destructive) {
+                    model.ignoreSamples([sample])
+                    ensurePersonExists()
+                } label: {
+                    Label("标记非人物", systemImage: "eye.slash")
+                }
+            }
+        }
+    }
+
+    private func clearSelection() {
+        selected.removeAll()
+        selectMode = false
+    }
+
+    private func ensurePersonExists() {
+        if !model.people.contains(where: { $0.id == person.id }) {
+            dismiss()
         }
     }
 }
