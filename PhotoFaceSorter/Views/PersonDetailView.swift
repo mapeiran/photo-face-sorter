@@ -20,14 +20,17 @@ struct PersonDetailView: View {
                 }
             }
 
-            Section("人脸样本（\(model.samples(of: person).count)）") {
+            Section("照片（\(model.samples(of: person).count)）") {
                 if model.samples(of: person).isEmpty {
                     Text("暂无样本人脸").foregroundColor(.secondary)
                 } else {
-                    ForEach(model.samples(of: person)) { sample in
-                        Text(sample.assetLocalIdentifier)
-                            .font(.caption)
-                            .lineLimit(1)
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 80), spacing: 6)], spacing: 6) {
+                        ForEach(model.samples(of: person)) { sample in
+                            AssetThumbnailView(localIdentifier: sample.assetLocalIdentifier,
+                                               boundingBox: sample.boundingBox,
+                                               side: 80)
+                                .cornerRadius(6)
+                        }
                     }
                 }
             }

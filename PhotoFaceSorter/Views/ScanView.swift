@@ -18,6 +18,9 @@ struct ScanView: View {
             .padding()
             .navigationTitle("扫描")
             .task { await requestAuthorization() }
+            .onChange(of: coordinator.state) { newState in
+                if newState == .finished { model.reload() }
+            }
         }
     }
 

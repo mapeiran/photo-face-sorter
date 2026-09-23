@@ -134,6 +134,19 @@ final class ScanCoordinator: ObservableObject {
         var people = store.people
         var clusterToPerson: [Int: UUID] = [:]
 
+        // 先按已有样本归属投票，尽量保留已命名的人物
+        var votes: [Int: [UUID: Int]] = [:]
+        for (index, cluster) in assignments.enumerated() where cluster >= 0 {
+            if let personID = samples[index].personID {
+                votes[cluster, default: [:]][personID, default: 0] += 1
+            }
+        }
+        for (cluster, tally) in votes {
+            if let (personID, _) = tally.max(by: { $0.value < $1.value }) {
+                clusterToPerson[cluster] = personID
+            }
+        }
+
         for (index, cluster) in assignments.enumerated() {
             guard cluster >= 0 else { continue }
             if let personID = clusterToPerson[cluster] {
@@ -145,6 +158,11 @@ final class ScanCoordinator: ObservableObject {
                 samples[index].personID = person.id
             }
         }
+
+        // 清理没有任何样本的人物
+        let usedPersonIDs = Set(samples.compactMap { $0.personID })
+        people = people.filter { usedPersonIDs.contains($0.id) }
+
         store.people = people
         store.samples = samples
     }

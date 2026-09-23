@@ -32,14 +32,20 @@ struct PeopleView: View {
     }
 
     private func personCell(_ person: Person) -> some View {
-        VStack(spacing: 6) {
+        let sample = model.samples(of: person).first
+        return VStack(spacing: 6) {
             ZStack {
-                Circle().fill(Color(.secondarySystemBackground))
-                Image(systemName: "person.fill")
-                    .font(.system(size: 30))
-                    .foregroundColor(.secondary)
+                if let sample {
+                    AssetThumbnailView(localIdentifier: sample.assetLocalIdentifier,
+                                       boundingBox: sample.boundingBox,
+                                       side: 80)
+                } else {
+                    Color(.secondarySystemBackground)
+                        .overlay(Image(systemName: "person.fill").foregroundColor(.secondary))
+                }
             }
             .frame(width: 80, height: 80)
+            .clipShape(Circle())
 
             Text(person.displayName).font(.caption).lineLimit(1)
             Text("\(model.samples(of: person).count) 张")
