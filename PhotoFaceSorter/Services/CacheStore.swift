@@ -11,11 +11,14 @@ final class CacheStore {
         root = base.appendingPathComponent("PhotoFaceSorter", isDirectory: true)
         try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
 
-        // 旧版样本格式（[Float]）体积巨大且会拖慢解码，v2 起改为二进制，一次性清理
+        // 旧版样本格式（[Float]）体积巨大且会拖慢解码，v2 起改为二进制；
+        // v3 起一并清理已扫描标记（避免旧标记导致「扫描秒结束」）
         let version = UserDefaults.standard.integer(forKey: "cacheSchemaVersion")
-        if version < 2 {
+        if version < 3 {
             try? FileManager.default.removeItem(at: root.appendingPathComponent("samples.json"))
-            UserDefaults.standard.set(2, forKey: "cacheSchemaVersion")
+            try? FileManager.default.removeItem(at: root.appendingPathComponent("people.json"))
+            try? FileManager.default.removeItem(at: root.appendingPathComponent("records.json"))
+            UserDefaults.standard.set(3, forKey: "cacheSchemaVersion")
         }
     }
 
@@ -69,18 +72,12 @@ final class CacheStore {
     /// 清空人脸识别缓存（样本/人物/已处理标记）
     func clearFaceCache() {
         samplesCache = nil
-        writeQueue.async { [weak self] in
-            guard let self else { return }
-            try? FileManager.default.removeItem(at: self.url("samples.json"))
-            try? FileManager.default.removeItem(at: self.url("people.json"))
-            try? FileManager.default.removeItem(at: self.url("records.json"))
-        }
+        try? FileManager.default.removeItem(at: url("samples.json"))
+        try? FileManager.default.removeItem(at: url("people.json"))
+        try? FileManager.default.removeItem(at: url("records.json"))
     }
 
     func clearLogs() {
-        writeQueue.async { [weak self] in
-            guard let self else { return }
-            try? FileManager.default.removeItem(at: self.url("logs.json"))
-        }
+        try? FileManager.default.removeItem(at: url("logs.json"))
     }
 }

@@ -87,11 +87,26 @@ struct ScanView: View {
                     Button("继续") { coordinator.resume() }.buttonStyle(.borderedProminent)
                     Button("终止") { coordinator.stop() }.buttonStyle(.bordered).tint(.red)
                 } else {
-                    Button("开始扫描") {
-                        coordinator.start(store: model.store)
+                    VStack(spacing: 10) {
+                        Button("开始扫描（增量）") {
+                            coordinator.start(store: model.store)
+                        }
+                        .buttonStyle(.borderedProminent)
+
+                        Button("全量重扫（清空已扫描标记）") {
+                            model.clearFaceCache()
+                            coordinator.start(store: model.store)
+                        }
+                        .font(.footnote)
                     }
-                    .buttonStyle(.borderedProminent)
                 }
+            }
+
+            if coordinator.state == .finished && coordinator.total == 0 {
+                Text("没有待扫描的照片（可能已全部扫描，或未授权/被排除相簿过滤）")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
             }
 
             Spacer()
