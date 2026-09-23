@@ -3,6 +3,7 @@ import UIKit
 
 struct SettingsView: View {
     @EnvironmentObject var model: AppModel
+    @EnvironmentObject var autoScan: AutoScanManager
 
     var body: some View {
         NavigationStack {
@@ -15,8 +16,15 @@ struct SettingsView: View {
 
                 Section("自动扫描") {
                     Toggle("启用增量自动扫描", isOn: $model.autoScanEnabled)
+                        .onChange(of: model.autoScanEnabled) { autoScan.setEnabled($0) }
                     Toggle("仅充电时后台扫描", isOn: $model.chargeOnlyBackground)
                         .disabled(!model.autoScanEnabled)
+                    if let date = autoScan.lastRunDate {
+                        LabeledContent("最近自动扫描", value: date.formatted(date: .abbreviated, time: .shortened))
+                    }
+                    if let msg = autoScan.lastRunMessage {
+                        Text(msg).font(.caption).foregroundColor(.secondary)
+                    }
                     Text("后台扫描受 iOS 系统调度限制，不能保证实时。")
                         .font(.footnote)
                         .foregroundColor(.secondary)

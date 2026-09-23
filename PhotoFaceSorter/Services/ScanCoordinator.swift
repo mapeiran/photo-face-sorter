@@ -39,12 +39,12 @@ final class ScanCoordinator: ObservableObject {
 
     // MARK: - 控制
 
-    func start(store: CacheStore) {
+    func start(store: CacheStore, limit: Int = .max) {
         guard state != .scanning else { return }
         state = .scanning
         paused = false
         stopped = false
-        runTask = Task { await run(store: store) }
+        runTask = Task { await run(store: store, limit: limit) }
     }
 
     func pause() {
@@ -67,10 +67,10 @@ final class ScanCoordinator: ObservableObject {
 
     // MARK: - 扫描
 
-    private func run(store: CacheStore) async {
+    private func run(store: CacheStore, limit: Int) async {
         let assets = library.fetchAllPhotoAssets()
         let records = store.records
-        let pending = assets.filter { records[$0.localIdentifier] == nil }
+        let pending = Array(assets.filter { records[$0.localIdentifier] == nil }.prefix(limit))
 
         total = pending.count
         scanned = 0

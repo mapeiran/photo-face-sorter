@@ -7,6 +7,9 @@ final class BackgroundScanService {
 
     static let taskIdentifier = "com.mapeiran.PhotoFaceSorter.refresh"
 
+    /// 后台触发时执行的回调
+    var onRun: (() async -> Void)?
+
     func register() {
         BGTaskScheduler.shared.register(forTaskWithIdentifier: Self.taskIdentifier, using: nil) { task in
             guard let refreshTask = task as? BGAppRefreshTask else { return }
@@ -23,7 +26,7 @@ final class BackgroundScanService {
     private func handle(_ task: BGAppRefreshTask) {
         schedule()
         let operation = Task {
-            // TODO: 增量扫描新增照片（受系统后台时长限制）
+            await onRun?()
             task.setTaskCompleted(success: true)
         }
         task.expirationHandler = { operation.cancel() }
