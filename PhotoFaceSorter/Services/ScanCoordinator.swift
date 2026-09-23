@@ -135,44 +135,9 @@ final class ScanCoordinator: ObservableObject {
     // MARK: - 聚类
 
     private func recluster(store: CacheStore) {
-        var samples = store.samples
-        let features = samples.map { $0.feature }
-        let assignments = clusterer.cluster(features: features, threshold: 0.9)
-
-        var people = store.people
-        var clusterToPerson: [Int: UUID] = [:]
-
-        // 先按已有样本归属投票，尽量保留已命名的人物
-        var votes: [Int: [UUID: Int]] = [:]
-        for (index, cluster) in assignments.enumerated() where cluster >= 0 {
-            if let personID = samples[index].personID {
-                votes[cluster, default: [:]][personID, default: 0] += 1
-            }
-        }
-        for (cluster, tally) in votes {
-            if let (personID, _) = tally.max(by: { $0.value < $1.value }) {
-                clusterToPerson[cluster] = personID
-            }
-        }
-
-        for (index, cluster) in assignments.enumerated() {
-            guard cluster >= 0 else { continue }
-            if let personID = clusterToPerson[cluster] {
-                samples[index].personID = personID
-            } else {
-                let person = Person(name: "人物 \(people.count + 1)")
-                people.append(person)
-                clusterToPerson[cluster] = person.id
-                samples[index].personID = person.id
-            }
-        }
-
-        // 清理没有任何样本的人物
-        let usedPersonIDs = Set(samples.compactMap { $0.personID })
-        people = people.filter { usedPersonIDs.contains($0.id) }
-
-        store.people = people
-        store.samples = samples
+        let stored = UserDefaults.standard.object(forKey: "clusterThreshold") as? Double
+        let threshold = Float(stored ?? 0.9)
+        ClusterRebuilder.rebuild(store: store, threshold: threshold)
     }
 
     // MARK: - 离主线程计算

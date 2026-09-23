@@ -38,6 +38,14 @@ struct PeopleView: View {
             }
             .navigationTitle("人物")
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        model.recluster()
+                    } label: {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                    }
+                    .disabled(model.store.samples.isEmpty)
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(editMode ? "完成" : "选择") {
                         editMode.toggle()

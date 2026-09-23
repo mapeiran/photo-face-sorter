@@ -30,6 +30,22 @@ struct SettingsView: View {
                         .foregroundColor(.secondary)
                 }
 
+                Section("识别与聚类") {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("聚类阈值")
+                            Spacer()
+                            Text(String(format: "%.2f", model.clusterThreshold))
+                                .foregroundColor(.secondary)
+                        }
+                        Slider(value: $model.clusterThreshold, in: 0.5...1.5, step: 0.05)
+                        Text("越小分组越细（同一人易被拆开）；越大越粗（不同人易被合并）。")
+                            .font(.footnote)
+                            .foregroundColor(.secondary)
+                    }
+                    Button("按新阈值重新聚类") { model.recluster() }
+                }
+
                 Section("缓存管理") {
                     Button("清空人脸识别缓存") { model.clearFaceCache() }
                     Button("清空执行日志") { model.clearLogs() }

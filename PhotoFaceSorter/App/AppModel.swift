@@ -15,6 +15,14 @@ final class AppModel: ObservableObject {
     @AppStorage("autoScanEnabled") var autoScanEnabled: Bool = false
     /// 仅充电时后台扫描
     @AppStorage("chargeOnlyBackground") var chargeOnlyBackground: Bool = true
+    /// 聚类阈值（越小分组越细）
+    @AppStorage("clusterThreshold") var clusterThreshold: Double = 0.9
+
+    /// 按当前阈值重新聚类
+    func recluster() {
+        ClusterRebuilder.rebuild(store: store, threshold: Float(clusterThreshold))
+        reload()
+    }
 
     init() {
         reload()
