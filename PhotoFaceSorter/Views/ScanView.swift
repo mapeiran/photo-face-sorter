@@ -6,6 +6,10 @@ struct ScanView: View {
     @StateObject private var coordinator = ScanCoordinator()
     @State private var authorized = false
 
+    @State private var pendingRules: [ClassifyRule] = []
+    @State private var showRunConfirm = false
+    @State private var runMessage: String?
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 24) {
@@ -19,7 +23,26 @@ struct ScanView: View {
             .navigationTitle("扫描")
             .task { await requestAuthorization() }
             .onChange(of: coordinator.state) { newState in
-                if newState == .finished { model.reload() }
+                if newState == .finished {
+                    model.reload()
+                    prepareRules()
+                }
+            }
+            .confirmationDialog("执行自动归类规则？", isPresented: $showRunConfirm, titleVisibility: .visible) {
+                Button("执行") { executePendingRules() }
+                Button("稍后", role: .cancel) { pendingRules = [] }
+            } message: {
+                let moveCount = pendingRules.filter { $0.action == .move }.count
+                Text(moveCount > 0
+                     ? "共 \(pendingRules.count) 条规则，含 \(moveCount) 条「移动」（原相簿不再保留，不可逆）。"
+                     : "共 \(pendingRules.count) 条规则，将把匹配照片复制到目标相簿。")
+            }
+            .alert("完成", isPresented: Binding(
+                get: { runMessage != nil },
+                set: { if !$0 { runMessage = nil } })) {
+                Button("好", role: .cancel) { runMessage = nil }
+            } message: {
+                Text(runMessage ?? "")
             }
         }
     }
@@ -84,5 +107,29 @@ struct ScanView: View {
     private func requestAuthorization() async {
         let status = await PhotoLibraryService().requestAuthorization()
         authorized = (status == .authorized || status == .limited)
+    }
+
+    // MARK: - 规则
+
+    private func prepareRules() {
+        let enabled = model.rules.filter { $0.enabled }
+        guard !enabled.isEmpty else { return }
+        pendingRules = enabled
+        showRunConfirm = true
+    }
+
+    private func executePendingRules() {
+        let rules = pendingRules
+        pendingRules = []
+        Task {
+            let outcome = await RuleRunner().runAll(rules: rules,
+                                                    samples: model.store.samples,
+                                                    records: model.store.records,
+                                                    store: model.store)
+            await MainActor.run {
+                outcome.logs.forEach { model.appendLog($0) }
+                runMessage = "已执行 \(outcome.logs.count) 条规则：复制 \(outcome.copiedCount) 张，移动 \(outcome.movedCount) 张"
+            }
+        }
     }
 }
