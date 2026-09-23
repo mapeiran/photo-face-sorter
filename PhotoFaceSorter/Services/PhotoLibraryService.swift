@@ -49,6 +49,16 @@ final class PhotoLibraryService {
         return assets
     }
 
+    /// 汇总若干相簿内所有照片的标识（用于排除）
+    func fetchAssetIdentifiers(in albums: [PHAssetCollection]) -> Set<String> {
+        var ids = Set<String>()
+        for album in albums {
+            let result = PHAsset.fetchAssets(in: album, options: nil)
+            result.enumerateObjects { asset, _, _ in ids.insert(asset.localIdentifier) }
+        }
+        return ids
+    }
+
     // MARK: - 相簿
 
     func createOrFetchAlbum(named name: String) -> PHAssetCollection? {

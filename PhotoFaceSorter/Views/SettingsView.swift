@@ -35,6 +35,14 @@ struct SettingsView: View {
                     Button("清空执行日志") { model.clearLogs() }
                 }
 
+                Section("扫描范围") {
+                    NavigationLink {
+                        ExcludedAlbumsView()
+                    } label: {
+                        Label("排除相簿", systemImage: "eye.slash")
+                    }
+                }
+
                 Section("权限") {
                     Button("打开系统设置") {
                         if let url = URL(string: UIApplication.openSettingsURLString) {

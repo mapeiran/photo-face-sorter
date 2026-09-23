@@ -70,7 +70,15 @@ final class ScanCoordinator: ObservableObject {
     private func run(store: CacheStore, limit: Int) async {
         let assets = library.fetchAllPhotoAssets()
         let records = store.records
-        let pending = Array(assets.filter { records[$0.localIdentifier] == nil }.prefix(limit))
+
+        // 排除相簿
+        let excludedIDs = UserDefaults.standard.stringArray(forKey: "excludedAlbumIDs") ?? []
+        let excludedAlbums = library.fetchUserAlbums().filter { excludedIDs.contains($0.localIdentifier) }
+        let excludedAssetIDs = library.fetchAssetIdentifiers(in: excludedAlbums)
+
+        let pending = Array(assets.filter {
+            records[$0.localIdentifier] == nil && !excludedAssetIDs.contains($0.localIdentifier)
+        }.prefix(limit))
 
         total = pending.count
         scanned = 0
