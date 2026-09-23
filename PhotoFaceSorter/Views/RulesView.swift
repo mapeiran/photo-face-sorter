@@ -90,7 +90,7 @@ struct RulesView: View {
 
     private func previewAndRun() {
         previewCount = RuleRunner().previewCount(rules: model.rules,
-                                                 samples: model.store.samples,
+                                                 samples: model.samples,
                                                  records: model.store.records)
         showRunConfirm = true
     }
@@ -98,7 +98,7 @@ struct RulesView: View {
     private func executeRules() {
         Task {
             let outcome = await RuleRunner().runAll(rules: model.rules,
-                                                    samples: model.store.samples,
+                                                    samples: model.samples,
                                                     records: model.store.records,
                                                     store: model.store)
             await MainActor.run {

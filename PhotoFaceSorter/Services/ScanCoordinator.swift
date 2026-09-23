@@ -29,7 +29,6 @@ final class ScanCoordinator: ObservableObject {
     private let library = PhotoLibraryService()
     private let detector = FaceDetectionService()
     private let embedder = FaceEmbeddingService()
-    private let clusterer = FaceClusteringService()
 
     private var runTask: Task<Void, Never>?
     private var paused = false

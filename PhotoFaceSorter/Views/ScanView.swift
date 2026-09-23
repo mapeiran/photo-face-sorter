@@ -25,6 +25,7 @@ struct ScanView: View {
             .onChange(of: coordinator.state) { newState in
                 if newState == .finished {
                     model.reload()
+                    model.loadSamplesAsync()
                     prepareRules()
                 }
             }
@@ -123,7 +124,7 @@ struct ScanView: View {
         pendingRules = []
         Task {
             let outcome = await RuleRunner().runAll(rules: rules,
-                                                    samples: model.store.samples,
+                                                    samples: model.samples,
                                                     records: model.store.records,
                                                     store: model.store)
             await MainActor.run {

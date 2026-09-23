@@ -44,7 +44,7 @@ struct PeopleView: View {
                     } label: {
                         Image(systemName: "arrow.triangle.2.circlepath")
                     }
-                    .disabled(model.store.samples.isEmpty)
+                    .disabled(model.samples.isEmpty)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(editMode ? "完成" : "选择") {

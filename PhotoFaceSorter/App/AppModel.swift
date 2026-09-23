@@ -2,7 +2,7 @@ import Foundation
 import Combine
 import SwiftUI
 
-/// 全局数据模型（人物、规则、日志、设置）
+/// 全局数据模型（人物、人脸样本、规则、日志、设置）
 @MainActor
 final class AppModel: ObservableObject {
     let store = CacheStore()
@@ -10,6 +10,8 @@ final class AppModel: ObservableObject {
     @Published var people: [Person] = []
     @Published var rules: [ClassifyRule] = []
     @Published var logs: [ExecutionLog] = []
+    /// 人脸样本（内存驻留，异步加载，避免启动阻塞）
+    @Published var samples: [FaceSample] = []
 
     /// 自动扫描总开关（默认关闭）
     @AppStorage("autoScanEnabled") var autoScanEnabled: Bool = false
@@ -18,20 +20,33 @@ final class AppModel: ObservableObject {
     /// 聚类阈值（越小分组越细）
     @AppStorage("clusterThreshold") var clusterThreshold: Double = 0.9
 
-    /// 按当前阈值重新聚类
-    func recluster() {
-        ClusterRebuilder.rebuild(store: store, threshold: Float(clusterThreshold))
-        reload()
-    }
-
     init() {
         reload()
+        loadSamplesAsync()
     }
+
+    // MARK: - 加载
 
     func reload() {
         people = store.people
         rules = store.rules.sorted { $0.order < $1.order }
         logs = store.logs.sorted { $0.date > $1.date }
+    }
+
+    /// 异步加载人脸样本（体积较大，避免主线程阻塞）
+    func loadSamplesAsync() {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            let loaded = self.store.samples
+            DispatchQueue.main.async { self.samples = loaded }
+        }
+    }
+
+    /// 按当前阈值重新聚类
+    func recluster() {
+        ClusterRebuilder.rebuild(store: store, threshold: Float(clusterThreshold))
+        reload()
+        loadSamplesAsync()
     }
 
     // MARK: - 人物
@@ -55,91 +70,83 @@ final class AppModel: ObservableObject {
 
     func deletePerson(_ person: Person) {
         store.people = store.people.filter { $0.id != person.id }
-        var samples = store.samples
-        for index in samples.indices where samples[index].personID == person.id {
-            samples[index].personID = nil
+        var list = samples
+        for index in list.indices where list[index].personID == person.id {
+            list[index].personID = nil
         }
-        store.samples = samples
-        reload()
+        persistSamples(list)
     }
 
     /// 合并两个人物（把 from 的样本人脸并入 to）
     func mergePerson(_ from: Person, into to: Person) {
-        var samples = store.samples
-        for index in samples.indices where samples[index].personID == from.id {
-            samples[index].personID = to.id
+        var list = samples
+        for index in list.indices where list[index].personID == from.id {
+            list[index].personID = to.id
         }
-        store.samples = samples
         store.people = store.people.filter { $0.id != from.id }
-        reload()
+        persistSamples(list)
     }
 
     func samples(of person: Person) -> [FaceSample] {
-        store.samples.filter { $0.personID == person.id }
+        samples.filter { $0.personID == person.id }
     }
 
     /// 批量更新人脸样本
     func updateSamples(_ updated: [FaceSample]) {
-        var samples = store.samples
+        var list = samples
         for sample in updated {
-            if let index = samples.firstIndex(where: { $0.id == sample.id }) {
-                samples[index] = sample
+            if let index = list.firstIndex(where: { $0.id == sample.id }) {
+                list[index] = sample
             }
         }
-        store.samples = samples
-        cleanupEmptyPeople()
-        reload()
+        persistSamples(list)
     }
 
     /// 拆分：把选中的人脸移入一个新建人物
     @discardableResult
     func split(_ samplesToSplit: [FaceSample], name: String) -> Person {
         let person = Person(name: name.trimmingCharacters(in: .whitespacesAndNewlines))
-        var samples = store.samples
+        var list = samples
         let ids = Set(samplesToSplit.map { $0.id })
-        for index in samples.indices where ids.contains(samples[index].id) {
-            samples[index].personID = person.id
+        for index in list.indices where ids.contains(list[index].id) {
+            list[index].personID = person.id
         }
-        store.samples = samples
-
         var people = store.people
         people.append(person)
         store.people = people
-
-        cleanupEmptyPeople()
-        reload()
+        persistSamples(list)
         return person
     }
 
     /// 把选中的人脸移动到指定人物（nil = 移出人物）
     func moveSamples(_ samplesToMove: [FaceSample], to person: Person?) {
-        var samples = store.samples
+        var list = samples
         let ids = Set(samplesToMove.map { $0.id })
-        for index in samples.indices where ids.contains(samples[index].id) {
-            samples[index].personID = person?.id
-            samples[index].isIgnored = false
+        for index in list.indices where ids.contains(list[index].id) {
+            list[index].personID = person?.id
+            list[index].isIgnored = false
         }
-        store.samples = samples
-        cleanupEmptyPeople()
-        reload()
+        persistSamples(list)
     }
 
     /// 标记为非人物人脸（屏蔽）
     func ignoreSamples(_ samplesToIgnore: [FaceSample]) {
-        var samples = store.samples
+        var list = samples
         let ids = Set(samplesToIgnore.map { $0.id })
-        for index in samples.indices where ids.contains(samples[index].id) {
-            samples[index].isIgnored = true
-            samples[index].personID = nil
+        for index in list.indices where ids.contains(list[index].id) {
+            list[index].isIgnored = true
+            list[index].personID = nil
         }
-        store.samples = samples
-        cleanupEmptyPeople()
-        reload()
+        persistSamples(list)
     }
 
-    private func cleanupEmptyPeople() {
-        let used = Set(store.samples.compactMap { $0.personID })
-        store.people = store.people.filter { used.contains($0.id) }
+    private func persistSamples(_ updated: [FaceSample]) {
+        samples = updated
+        store.samples = updated
+        let used = Set(updated.compactMap { $0.personID })
+        let filtered = store.people.filter { used.contains($0.id) }
+        store.people = filtered
+        people = filtered
     }
 
     // MARK: - 规则
@@ -182,6 +189,7 @@ final class AppModel: ObservableObject {
 
     func clearFaceCache() {
         store.clearFaceCache()
+        samples = []
         reload()
     }
 

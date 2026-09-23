@@ -96,7 +96,7 @@ struct RuleEditView: View {
 
     private func testRule() {
         let ids = RuleEngine().matchedAssetIDs(for: rule,
-                                               samples: model.store.samples,
+                                               samples: model.samples,
                                                records: model.store.records)
         testCount = ids.count
     }

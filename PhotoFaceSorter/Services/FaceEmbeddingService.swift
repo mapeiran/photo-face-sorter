@@ -27,6 +27,23 @@ final class FaceEmbeddingService {
             }
             vector = doubles.map { Float($0) }
         }
-        return vector
+        return Self.downsample(vector, to: 256)
+    }
+
+    /// 降维（分块平均），减小存储与聚类开销
+    static func downsample(_ vector: [Float], to target: Int) -> [Float] {
+        guard vector.count > target, target > 0 else { return vector }
+        let block = vector.count / target
+        guard block > 0 else { return Array(vector.prefix(target)) }
+        var result = [Float](repeating: 0, count: target)
+        for i in 0..<target {
+            var sum: Float = 0
+            let base = i * block
+            for j in 0..<block where base + j < vector.count {
+                sum += vector[base + j]
+            }
+            result[i] = sum / Float(block)
+        }
+        return result
     }
 }
