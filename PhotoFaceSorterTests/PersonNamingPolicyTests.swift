@@ -48,4 +48,18 @@ final class PersonNamingPolicyTests: XCTestCase {
     func testUnknownAssetReturnsNil() {
         XCTAssertNil(albumName("不存在", ["a1": ["妈妈"]]))
     }
+
+    /// 同时在「已有人物相簿」和一个更专有的新相簿里时，优先并入已有人物。
+    func testExistingPersonNameWinsOverMoreSpecificNewAlbum() {
+        let map = ["a1": ["妈妈", "亲子"]]
+        let counts = ["妈妈": 100, "亲子": 5]
+        XCTAssertEqual(albumName("a1", map, counts), "亲子",
+                       "没有已有人物时仍按最专有相簿命名")
+        XCTAssertEqual(PersonNamingPolicy.albumName(assetLocalIdentifier: "a1",
+                                                    albumNamesByAsset: map,
+                                                    albumMemberCounts: counts,
+                                                    existingNames: ["妈妈"]),
+                       "妈妈",
+                       "有已有人物时应并入已有人物，沿用它的名字")
+    }
 }

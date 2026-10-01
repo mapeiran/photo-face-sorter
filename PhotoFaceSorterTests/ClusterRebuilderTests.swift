@@ -424,4 +424,26 @@ final class ClusterRebuilderTests: XCTestCase {
         let names = store.people.map(\.name)
         XCTAssertEqual(Set(names).count, names.count, "不应出现重名：\(names)")
     }
+
+    /// 强化「同相簿 / 同名合并」：新照片同时在已有人物相簿和一个更专有的新相簿里时，
+    /// 必须并入已有人物，而不是另立一个分组。
+    func testExistingPersonWinsWhenMultipleAlbumsMatch() {
+        let store = tempStore()
+        var existing = Person(name: "妈妈")
+        existing.nameIsAuto = true
+        store.people = [existing]
+        store.samples = [
+            FaceSample(assetLocalIdentifier: "a1", boundingBox: .zero,
+                       feature: clusterA, personID: existing.id),
+            FaceSample(assetLocalIdentifier: "b1", boundingBox: .zero, feature: clusterB),
+        ]
+
+        ClusterRebuilder.rebuild(store: store, threshold: 0.5,
+                                 albumNamesByAsset: ["a1": ["妈妈"], "b1": ["妈妈", "亲子"]])
+
+        XCTAssertEqual(store.people.count, 1, "不应新建分组：\(store.people.map { $0.name })")
+        XCTAssertEqual(store.people.first?.name, "妈妈")
+        XCTAssertEqual(store.samples.first { $0.assetLocalIdentifier == "b1" }?.personID, existing.id,
+                       "新照片应并入同相簿的已有人物")
+    }
 }

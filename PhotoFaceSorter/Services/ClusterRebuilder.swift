@@ -56,6 +56,11 @@ enum ClusterRebuilder {
             }
         }
 
+        // 本轮开始时就存在的人物名：照片同时在多个像人名的相簿里时优先复用它们，
+        // 保证识别到的分组并入已有人物（同相簿 / 同名合并），而不是另立新分组。
+        // 刻意在循环开始前定格：否则同一轮里刚建的分组会互相「吸走」，结果依赖样本顺序。
+        let existingPersonNames = Set(personByName.keys)
+
         // 参与归属投票的人物：用户命名的 + 本轮按相簿命名的人物。
         // 旧版按系统相簿命名（名字在 previousAlbumNames 里）的不在其中 —— 它们要被重新推导掉。
         var votePersonIDs = Set<UUID>()
@@ -74,7 +79,8 @@ enum ClusterRebuilder {
                 guard let name = PersonNamingPolicy.albumName(
                     assetLocalIdentifier: samples[index].assetLocalIdentifier,
                     albumNamesByAsset: albumNamesByAsset,
-                    albumMemberCounts: memberCounts) else { continue }
+                    albumMemberCounts: memberCounts,
+                    existingNames: existingPersonNames) else { continue }
 
                 let personID: UUID
                 if let existing = personByName[name] {
