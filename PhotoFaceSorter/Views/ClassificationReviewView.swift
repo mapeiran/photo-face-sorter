@@ -110,9 +110,6 @@ struct ClassificationReviewView: View {
                                  + "只有确认后才会写入系统相簿。")
                                 .font(.footnote)
                                 .foregroundColor(.secondary)
-                            Text("点照片看大图，点右上角圆圈勾选 / 取消，长按照片看图片详情。")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
                         }
                         ForEach(review.items) { item in
                             proposal(item)
@@ -247,7 +244,10 @@ struct ClassificationReviewView: View {
                 if item.albumExists {
                     AlbumDetailView(albumTitle: item.targetAlbumName)
                 } else {
-                    ProposalPhotosView(albumName: item.targetAlbumName, assetIDs: item.assetIDs)
+                    ProposalPhotosView(albumName: item.targetAlbumName,
+                                       assetIDs: item.assetIDs,
+                                       personID: item.personID)
+                        .environmentObject(review)
                 }
             } label: {
                 HStack(spacing: 6) {
@@ -321,11 +321,14 @@ struct ClassificationReviewView: View {
     }
 }
 
-/// 目标相簿还没创建时的预览：显示确认后将会写入这本相簿的照片。
+/// 目标相簿还没创建时的预览：显示确认后将会写入这本相簿的照片，并可直接多选。
+/// 选择与归类页共用同一个 `ClassificationReviewModel`，两处同步。
 struct ProposalPhotosView: View {
     let albumName: String
     let assetIDs: [String]
+    let personID: UUID
 
+    @EnvironmentObject private var review: ClassificationReviewModel
     @State private var preview: Preview?
 
     private struct Preview: Identifiable {
@@ -335,10 +338,15 @@ struct ProposalPhotosView: View {
 
     private let columns = [GridItem(.adaptive(minimum: 88), spacing: 6)]
 
+    private var selectedCount: Int {
+        assetIDs.filter { review.isSelected($0, in: personID) }.count
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
-                Text("相簿「\(albumName)」还没创建。下面是确认后将会写入的 \(assetIDs.count) 张照片。")
+                Text("已选 \(selectedCount)/\(assetIDs.count) 张 · 相簿「\(albumName)」确认后创建。"
+                     + "点照片看大图，点右上角圆圈勾选 / 取消。")
                     .font(.footnote)
                     .foregroundColor(.secondary)
                     .padding(.horizontal)
@@ -346,13 +354,7 @@ struct ProposalPhotosView: View {
 
                 LazyVGrid(columns: columns, spacing: 6) {
                     ForEach(Array(assetIDs.enumerated()), id: \.element) { index, assetID in
-                        Button {
-                            preview = Preview(index: index)
-                        } label: {
-                            AssetThumbnailView(localIdentifier: assetID, contentMode: .fill, side: 88)
-                                .cornerRadius(6)
-                        }
-                        .buttonStyle(.plain)
+                        cell(assetID: assetID, index: index)
                     }
                 }
                 .padding(.horizontal)
@@ -361,8 +363,52 @@ struct ProposalPhotosView: View {
         }
         .navigationTitle(albumName)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(review.allSelected(in: personID) ? "取消全选" : "全选") {
+                    review.selectAll(!review.allSelected(in: personID), in: personID)
+                }
+            }
+        }
         .fullScreenCover(item: $preview) { preview in
             PhotoViewerView(assetIdentifiers: assetIDs, initialIndex: preview.index)
+        }
+    }
+
+    private func cell(assetID: String, index: Int) -> some View {
+        let selected = review.isSelected(assetID, in: personID)
+        return ZStack(alignment: .topTrailing) {
+            AssetThumbnailView(localIdentifier: assetID, contentMode: .fill, side: 88)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    preview = Preview(index: index)
+                }
+
+            Button {
+                review.toggle(assetID, in: personID)
+            } label: {
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 18))
+                    .foregroundColor(selected ? .accentColor : .white)
+                    .padding(4)
+                    .background(Circle().fill(.thinMaterial))
+            }
+            .buttonStyle(.plain)
+            .padding(3)
+        }
+        .contextMenu {
+            Button {
+                preview = Preview(index: index)
+            } label: {
+                Label("查看大图", systemImage: "arrow.up.left.and.arrow.down.right")
+            }
+            Button {
+                review.toggle(assetID, in: personID)
+            } label: {
+                Label(selected ? "取消选择" : "选择",
+                      systemImage: selected ? "circle" : "checkmark.circle")
+            }
         }
     }
 }
