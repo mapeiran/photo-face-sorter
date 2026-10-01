@@ -21,8 +21,15 @@ struct PersonDetailView: View {
 
     @State private var selectMode = false
     @State private var selected: Set<UUID> = []
-    /// 点击缩略图后全屏查看原图
-    @State private var previewSample: FaceSample?
+    /// 点击缩略图后全屏查看原图；带上整组样本，方便左右滑动翻看
+    @State private var preview: PhotoPreview?
+
+    /// 看图页的入口数据：整组样本 + 起始位置
+    private struct PhotoPreview: Identifiable {
+        let id = UUID()
+        let samples: [FaceSample]
+        let index: Int
+    }
 
     private var person: Person? { model.people.first { $0.id == personID } }
     private var samples: [FaceSample] { person.map { model.samples(of: $0) } ?? [] }
@@ -140,8 +147,8 @@ struct PersonDetailView: View {
                 clearSelection()
             }
         }
-        .fullScreenCover(item: $previewSample) { sample in
-            PhotoViewerView(sample: sample)
+        .fullScreenCover(item: $preview) { preview in
+            PhotoViewerView(samples: preview.samples, initialIndex: preview.index)
         }
     }
 
@@ -168,7 +175,8 @@ struct PersonDetailView: View {
         } else {
             // 缩略图只有 80pt，点开看原图/更清晰的画面
             Button {
-                previewSample = sample
+                preview = PhotoPreview(samples: samples,
+                                       index: samples.firstIndex(of: sample) ?? 0)
             } label: {
                 thumb
             }
