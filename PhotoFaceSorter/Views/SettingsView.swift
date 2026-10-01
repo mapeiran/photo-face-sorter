@@ -57,17 +57,6 @@ struct SettingsView: View {
                     }
                 }
 
-                Section("网络识别人像") {
-                    Toggle("启用（以图搜图）", isOn: $model.visualSearchEnabled)
-                    SecureField("Bing Visual Search 密钥", text: $model.visualSearchAPIKey)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    Text("关闭时一切都在本地完成。开启后，只有你主动点「网络识别人像」时，"
-                         + "才会把当前这一张照片上传到 Bing Visual Search 换取网页结果。")
-                        .font(.footnote)
-                        .foregroundColor(.secondary)
-                }
-
                 Section("缓存管理") {
                     Button("清空人脸识别缓存") { model.clearFaceCache() }
                     Button("清空执行日志") { model.clearLogs() }

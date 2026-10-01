@@ -351,13 +351,4 @@ final class PhotoLibraryService: Sendable {
         }
     }
 
-    /// 取一张适合上传的 JPEG（最长边 maxDimension），用于「网络识别人像（以图搜图）」。
-    /// 只在用户主动点识别时调用，不会用于扫描 / 聚类。
-    func uploadImageData(for assetLocalIdentifier: String,
-                         maxDimension: CGFloat = 1600) async -> Data? {
-        guard let asset = asset(localIdentifier: assetLocalIdentifier) else { return nil }
-        let size = CGSize(width: maxDimension, height: maxDimension)
-        guard let cgImage = await cgImage(for: asset, targetSize: size) else { return nil }
-        return UIImage(cgImage: cgImage).jpegData(compressionQuality: 0.8)
-    }
 }

@@ -28,7 +28,6 @@ struct PhotoViewerView: View {
     @State private var showDetail = false
     @State private var showAlbumPicker = false
     @State private var albumMessage: String?
-    @State private var visualSearchTarget: VisualSearchTarget?
 
     @State private var index: Int
     @State private var scale: CGFloat = 1
@@ -107,13 +106,6 @@ struct PhotoViewerView: View {
                         Button { showAlbumPicker = true } label: {
                             Label("移到系统相簿…", systemImage: "rectangle.stack.badge.minus")
                         }
-                        Button {
-                            if let currentIdentifier {
-                                visualSearchTarget = VisualSearchTarget(id: currentIdentifier)
-                            }
-                        } label: {
-                            Label("网络识别人像（以图搜图）", systemImage: "globe")
-                        }
                         if currentSample != nil {
                             Divider()
                             Button { showMove = true } label: {
@@ -161,9 +153,6 @@ struct PhotoViewerView: View {
             AlbumPickerView(title: "移到系统相簿") { albumName in
                 moveCurrent(to: albumName)
             }
-        }
-        .sheet(item: $visualSearchTarget) { target in
-            VisualSearchView(assetLocalIdentifier: target.id)
         }
         .alert("完成",
                isPresented: Binding(get: { albumMessage != nil },

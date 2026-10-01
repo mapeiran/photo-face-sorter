@@ -40,10 +40,8 @@ final class AppModel: ObservableObject {
     /// 大相册一次性扫完会长时间占用设备、界面像卡死，分批扫可随时停。
     @AppStorage(ScanBatchPolicy.defaultsKey) var maxPhotosPerScan: Int = ScanBatchPolicy.unlimited
 
-    /// 「网络识别人像（以图搜图）」总开关与 Bing Visual Search 密钥。
-    /// 默认关闭；只有用户主动点识别时，才会把当前这一张照片上传。
-    @AppStorage("visualSearchEnabled") var visualSearchEnabled: Bool = false
-    @AppStorage("visualSearchAPIKey") var visualSearchAPIKey: String = ""
+    /// 已移除的「网络识别人像」曾把密钥存进 UserDefaults，启动时清掉不留残留。
+    private static let legacyVisualSearchKeys = ["visualSearchEnabled", "visualSearchAPIKey"]
 
     /// 聚类规则版本。v1 = 旧的 0.5…1.5（默认 0.9），v2 = 新的 0.10…0.35（默认 0.25），
     /// v3 = 只用自定义相簿命名，v4 = 归类改为「相簿优先、AI 兜底」，
@@ -54,6 +52,9 @@ final class AppModel: ObservableObject {
 
     init() {
         viewedAlbumNames = Set(UserDefaults.standard.stringArray(forKey: Self.viewedAlbumsKey) ?? [])
+        for key in Self.legacyVisualSearchKeys {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
         excludedAlbumIDs = AlbumExclusionStore.loadExcluded()
         includedAlbumIDs = AlbumExclusionStore.loadIncluded()
         reload()
