@@ -362,6 +362,8 @@ final class AppModel: ObservableObject {
                 // 通知「归类审核」等页面刷新：这些照片已经进相簿，不该再出现在待归类里
                 NotificationCenter.default.post(name: .albumExportDidFinish, object: nil)
             }
+            // 记住「最近移动到的相簿」，相簿选择器顶部会展示
+            RecentAlbumStore.record(albumName)
             return AlbumExportOutcome(message: outcome.summary, succeeded: true)
         } catch {
             return AlbumExportOutcome(message: "写入系统相簿失败：\(error.localizedDescription)",

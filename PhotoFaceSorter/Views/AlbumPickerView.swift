@@ -17,6 +17,14 @@ struct AlbumPickerView: View {
     /// 新建相簿要放入的文件夹（nil = 顶层）
     @State private var folders: [AlbumFolderInfo] = []
     @State private var selectedFolderID: String?
+    /// 最近移动过的相簿名（最新在前）
+    @State private var recentAlbumNames: [String] = []
+
+    /// 最近移动过的相簿（过滤掉已经不存在的）
+    private var recentAlbums: [String] {
+        RecentAlbumStore.existing(recentAlbumNames,
+                                  in: Set(albums.compactMap { $0.localizedTitle }))
+    }
 
     /// 搜索过滤后的已有相簿（保持按名称排序）
     private var filteredAlbums: [PHAssetCollection] {
@@ -68,6 +76,14 @@ struct AlbumPickerView: View {
                 } footer: {
                     Text("新建的相簿会放进上面选择的文件夹；「移动」会把照片从其它相簿移除"
                          + "（原图不会删除），并记入执行日志，可回退。")
+                }
+
+                if trimmedSearchText.isEmpty && !recentAlbums.isEmpty {
+                    Section("最近移动") {
+                        ForEach(recentAlbums, id: \.self) { albumTitle in
+                            albumRow(albumTitle)
+                        }
+                    }
                 }
 
                 if sections.isEmpty {
@@ -135,6 +151,7 @@ struct AlbumPickerView: View {
                 folderByTitle = grouping.folderByAlbumTitle
                 folderOrder = grouping.folderOrder
                 folders = PhotoLibraryService().fetchFolders()
+                recentAlbumNames = RecentAlbumStore.load()
             }
         }
     }
