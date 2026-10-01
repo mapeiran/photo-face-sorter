@@ -37,6 +37,29 @@ final class PhotoLibraryService: Sendable {
         return albums
     }
 
+    /// 系统「照片」App 里的相簿**文件夹**分组：相簿名 -> 文件夹名，以及文件夹顺序。
+    ///
+    /// 人物页按它分节 —— 你在照片 App 里把相簿归到「家人」「同事」这类文件夹时，
+    /// App 里也按同样的分组展示。只取文件夹的直接子相簿，嵌套文件夹取最近的一层。
+    /// 相簿标题在「照片」里是唯一的，所以用标题做键就够了，不必再存相簿 ID。
+    func albumFolderGrouping() -> (folderByAlbumTitle: [String: String], folderOrder: [String]) {
+        var byTitle: [String: String] = [:]
+        var order: [String] = []
+        let folders = PHCollectionList.fetchCollectionLists(with: .folder, subtype: .any, options: nil)
+        folders.enumerateObjects { folder, _, _ in
+            guard let folderTitle = folder.localizedTitle, !folderTitle.isEmpty else { return }
+            var hasChildAlbum = false
+            PHCollection.fetchCollections(in: folder, options: nil).enumerateObjects { collection, _, _ in
+                guard let album = collection as? PHAssetCollection,
+                      let title = album.localizedTitle, !title.isEmpty else { return }
+                if byTitle[title] == nil { byTitle[title] = folderTitle }
+                hasChildAlbum = true
+            }
+            if hasChildAlbum, !order.contains(folderTitle) { order.append(folderTitle) }
+        }
+        return (byTitle, order)
+    }
+
     /// 所有用户相簿的名字（含系统同步 / 导入生成的相簿）。
     ///
     /// 用途：识别「上一版是按相簿名自动命名的人物」。这些名字是可重新推导的，

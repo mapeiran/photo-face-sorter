@@ -149,6 +149,21 @@ final class AppModel: ObservableObject {
         UserDefaults.standard.set(Array(viewedAlbumNames).sorted(), forKey: Self.viewedAlbumsKey)
     }
 
+    // MARK: - 系统相簿文件夹
+
+    /// 系统「照片」App 的文件夹：相簿名 -> 文件夹名（人物页按系统分组展示用）
+    @Published private(set) var folderByAlbumName: [String: String] = [:]
+    /// 文件夹顺序（跟随系统返回顺序）
+    @Published private(set) var folderOrder: [String] = []
+
+    /// 刷新系统相簿文件夹分组。
+    /// 在照片 App 里改过文件夹后，重新进入人物页即可更新。
+    func refreshFolderGrouping() {
+        let grouping = PhotoLibraryService.shared.albumFolderGrouping()
+        folderByAlbumName = grouping.folderByAlbumTitle
+        folderOrder = grouping.folderOrder
+    }
+
     // MARK: - 人物
 
     func upsertPerson(_ person: Person) {

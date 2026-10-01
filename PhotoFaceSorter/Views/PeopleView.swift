@@ -22,8 +22,8 @@ struct PeopleView: View {
                             if !newAlbumPeople.isEmpty {
                                 section("新增相簿", people: newAlbumPeople, showsMarkViewed: true)
                             }
-                            if !existingAlbumPeople.isEmpty {
-                                section("已有相簿", people: existingAlbumPeople)
+                            ForEach(folderSections) { group in
+                                section(group.title, people: group.people)
                             }
                             if !otherPeople.isEmpty {
                                 section("AI 分组（没有相簿）", people: otherPeople)
@@ -34,6 +34,8 @@ struct PeopleView: View {
                 }
             }
             .navigationTitle("人物")
+            // 系统「照片」App 里的相簿文件夹会变，进页面时刷新一次
+            .task { model.refreshFolderGrouping() }
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button {
@@ -84,6 +86,46 @@ struct PeopleView: View {
     /// 其余：AI 聚类出的自动编号人物，以及用户手动命名的人物
     private var otherPeople: [Person] {
         model.people.filter { $0.nameIsAuto != true }
+    }
+
+    /// 人物页的相簿分节：跟随系统「照片」App 的文件夹
+    private struct FolderSection: Identifiable {
+        let id: String
+        let title: String
+        let people: [Person]
+    }
+
+    /// 按系统文件夹分节；没有文件夹时退回一个「已有相簿」节
+    private var folderSections: [FolderSection] {
+        let viewed = existingAlbumPeople
+        guard !viewed.isEmpty else { return [] }
+        guard !model.folderByAlbumName.isEmpty else {
+            return [FolderSection(id: "已有相簿", title: "已有相簿", people: viewed)]
+        }
+        var byFolder: [String: [Person]] = [:]
+        var ungrouped: [Person] = []
+        for person in viewed {
+            if let folder = model.folderByAlbumName[person.name] {
+                byFolder[folder, default: []].append(person)
+            } else {
+                ungrouped.append(person)
+            }
+        }
+        var sections: [FolderSection] = []
+        for folder in model.folderOrder where byFolder[folder] != nil {
+            sections.append(FolderSection(id: folder,
+                                          title: folder,
+                                          people: byFolder.removeValue(forKey: folder) ?? []))
+        }
+        for folder in byFolder.keys.sorted() {
+            sections.append(FolderSection(id: folder,
+                                          title: folder,
+                                          people: byFolder[folder] ?? []))
+        }
+        if !ungrouped.isEmpty {
+            sections.append(FolderSection(id: "未分组", title: "未分组", people: ungrouped))
+        }
+        return sections
     }
 
     private func section(_ title: String,
