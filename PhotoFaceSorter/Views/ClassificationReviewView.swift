@@ -87,8 +87,6 @@ struct ClassificationReviewView: View {
     @State private var previewTarget: PreviewTarget?
     /// 长按 -> 图片详情
     @State private var detailTarget: PhotoDetailTarget?
-    /// 点目标相簿名 -> 进入该相簿看内容
-    @State private var openAlbumTitle: String?
 
     private struct PreviewTarget: Identifiable {
         let id = UUID()
@@ -132,9 +130,6 @@ struct ClassificationReviewView: View {
                 }
             }
             .task { if !review.didLoad { await reload() } }
-            .navigationDestination(item: $openAlbumTitle) { title in
-                AlbumDetailView(albumTitle: title)
-            }
             .sheet(isPresented: Binding(get: { pickerPersonID != nil },
                                         set: { if !$0 { pickerPersonID = nil } })) {
                 if let personID = pickerPersonID {
@@ -229,37 +224,38 @@ struct ClassificationReviewView: View {
                     .background((item.albumExists ? Color.secondary : Color.accentColor).opacity(0.15),
                                 in: Capsule())
                 Spacer()
-                Button("重命名") {
-                    renameText = item.personName
-                    renamePersonID = item.personID
+                Menu {
+                    Button {
+                        pickerPersonID = item.personID
+                    } label: {
+                        Label("更改目标相簿…", systemImage: "rectangle.stack")
+                    }
+                    Button {
+                        renameText = item.personName
+                        renamePersonID = item.personID
+                    } label: {
+                        Label("重命名人物…", systemImage: "pencil")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
                 }
                 .font(.caption)
             }
 
-            HStack {
-                // 已有相簿：点名字就能进去看里面的内容
-                Button {
-                    if item.albumExists { openAlbumTitle = item.targetAlbumName }
-                } label: {
-                    HStack(spacing: 4) {
-                        Text("目标相簿：\(item.targetAlbumName)").font(.subheadline)
-                        if item.albumExists {
-                            Image(systemName: "chevron.right")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        } else {
-                            Text("（确认后创建）")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    .foregroundColor(item.albumExists ? .accentColor : .primary)
+            // 整行可点：已有相簿进入查看内容；还没创建的则预览将要写入的照片
+            NavigationLink {
+                if item.albumExists {
+                    AlbumDetailView(albumTitle: item.targetAlbumName)
+                } else {
+                    ProposalPhotosView(albumName: item.targetAlbumName, assetIDs: item.assetIDs)
                 }
-                .buttonStyle(.plain)
-                .disabled(!item.albumExists)
-                Spacer()
-                Button("更改") { pickerPersonID = item.personID }
-                    .font(.caption)
+            } label: {
+                HStack(spacing: 6) {
+                    Text("目标相簿：\(item.targetAlbumName)").font(.subheadline)
+                    Text(item.albumExists ? "查看相簿内容" : "预览将要写入的照片")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -322,5 +318,51 @@ struct ClassificationReviewView: View {
         model.renamePerson(person, to: name)
         review.updatePersonName(name, for: personID)
         review.updateTarget(name, for: personID)
+    }
+}
+
+/// 目标相簿还没创建时的预览：显示确认后将会写入这本相簿的照片。
+struct ProposalPhotosView: View {
+    let albumName: String
+    let assetIDs: [String]
+
+    @State private var preview: Preview?
+
+    private struct Preview: Identifiable {
+        let id = UUID()
+        let index: Int
+    }
+
+    private let columns = [GridItem(.adaptive(minimum: 88), spacing: 6)]
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("相簿「\(albumName)」还没创建。下面是确认后将会写入的 \(assetIDs.count) 张照片。")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+
+                LazyVGrid(columns: columns, spacing: 6) {
+                    ForEach(Array(assetIDs.enumerated()), id: \.element) { index, assetID in
+                        Button {
+                            preview = Preview(index: index)
+                        } label: {
+                            AssetThumbnailView(localIdentifier: assetID, contentMode: .fill, side: 88)
+                                .cornerRadius(6)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.bottom)
+            }
+        }
+        .navigationTitle(albumName)
+        .navigationBarTitleDisplayMode(.inline)
+        .fullScreenCover(item: $preview) { preview in
+            PhotoViewerView(assetIdentifiers: assetIDs, initialIndex: preview.index)
+        }
     }
 }
