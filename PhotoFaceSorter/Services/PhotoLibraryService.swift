@@ -103,6 +103,26 @@ final class PhotoLibraryService: Sendable {
         return AlbumSummary(photoCount: count, coverLocalIdentifier: cover?.localIdentifier)
     }
 
+    /// 只要「相簿名 -> 文件夹名」与文件夹顺序，不含摘要。
+    /// 比 `albumFolderStructure()` 轻（不取相簿封面），供相簿选择器按文件夹分节用。
+    func albumFolderGrouping() -> (folderByAlbumTitle: [String: String], folderOrder: [String]) {
+        var byTitle: [String: String] = [:]
+        var order: [String] = []
+        let folders = PHCollectionList.fetchCollectionLists(with: .folder, subtype: .any, options: nil)
+        folders.enumerateObjects { folder, _, _ in
+            guard let folderTitle = folder.localizedTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !folderTitle.isEmpty else { return }
+            if !order.contains(folderTitle) { order.append(folderTitle) }
+            PHCollection.fetchCollections(in: folder, options: nil).enumerateObjects { collection, _, _ in
+                guard let album = collection as? PHAssetCollection,
+                      let title = album.localizedTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !title.isEmpty else { return }
+                if byTitle[title] == nil { byTitle[title] = folderTitle }
+            }
+        }
+        return (byTitle, order)
+    }
+
     /// 扫描页用的计数：会被跳过的相簿照片数与会被识别的散图数。
     func photoCounts() -> LibraryPhotoCounts {
         let allAssetIDs = Set(fetchAllPhotoAssets().map { $0.localIdentifier })

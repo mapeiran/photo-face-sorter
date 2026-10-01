@@ -10,6 +10,8 @@ struct AlbumPickerView: View {
     @State private var albums: [PHAssetCollection] = []
     @State private var newName = ""
     @State private var searchText = ""
+    @State private var folderByTitle: [String: String] = [:]
+    @State private var folderOrder: [String] = []
 
     /// 搜索过滤后的已有相簿（保持按名称排序）
     private var filteredAlbums: [PHAssetCollection] {
@@ -20,6 +22,14 @@ struct AlbumPickerView: View {
 
     private var trimmedSearchText: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// 按系统「照片」App 的文件夹分节（没有文件夹时就是「已有相簿」一节）
+    private var sections: [AlbumFolderSectioning.Section] {
+        AlbumFolderSectioning.sections(
+            albumTitles: filteredAlbums.compactMap { $0.localizedTitle },
+            folderByAlbumTitle: folderByTitle,
+            folderOrder: folderOrder)
     }
 
     var body: some View {
@@ -37,27 +47,25 @@ struct AlbumPickerView: View {
                     Text("移动会把照片从其它相簿移除（原图不会删除），并记入执行日志，可回退。")
                 }
 
-                Section("已有相簿") {
-                    if filteredAlbums.isEmpty {
+                if sections.isEmpty {
+                    Section {
                         Text(trimmedSearchText.isEmpty ? "没有可选的相簿" : "没有匹配的相簿")
                             .foregroundColor(.secondary)
-                    } else {
-                        ForEach(filteredAlbums, id: \.localIdentifier) { album in
-                            Button {
-                                pick(album.localizedTitle ?? "")
-                            } label: {
-                                HStack {
-                                    Image(systemName: "rectangle.stack")
-                                        .foregroundColor(.accentColor)
-                                    Text(album.localizedTitle ?? "未命名")
-                                        .foregroundColor(.primary)
-                                }
+                    }
+                } else {
+                    ForEach(sections) { section in
+                        Section(section.title) {
+                            ForEach(section.albumTitles, id: \.self) { albumTitle in
+                                albumRow(albumTitle)
                             }
                         }
                     }
-                    // 搜索时可以直接用关键词新建相簿
-                    if !trimmedSearchText.isEmpty,
-                       !albums.contains(where: { $0.localizedTitle == trimmedSearchText }) {
+                }
+
+                // 搜索时可以直接用关键词新建相簿
+                if !trimmedSearchText.isEmpty,
+                   !albums.contains(where: { $0.localizedTitle == trimmedSearchText }) {
+                    Section {
                         Button {
                             pick(trimmedSearchText)
                         } label: {
@@ -75,10 +83,26 @@ struct AlbumPickerView: View {
                 }
             }
             .onAppear {
-                // 系统相簿按名称排序（中文按本地化顺序、名字里的数字按数值）
+                // 系统相簿按名称排序（中文按本地化顺序、名字里的数字按数值），再按系统文件夹分节
                 albums = PhotoLibraryService().fetchUserAlbums().sorted {
                     AlbumTitleOrdering.isOrderedBefore($0.localizedTitle, $1.localizedTitle)
                 }
+                let grouping = PhotoLibraryService().albumFolderGrouping()
+                folderByTitle = grouping.folderByAlbumTitle
+                folderOrder = grouping.folderOrder
+            }
+        }
+    }
+
+    private func albumRow(_ albumTitle: String) -> some View {
+        Button {
+            pick(albumTitle)
+        } label: {
+            HStack {
+                Image(systemName: "rectangle.stack")
+                    .foregroundColor(.accentColor)
+                Text(albumTitle.isEmpty ? "未命名" : albumTitle)
+                    .foregroundColor(.primary)
             }
         }
     }
