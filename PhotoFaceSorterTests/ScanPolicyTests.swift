@@ -71,6 +71,28 @@ final class ScanPolicyTests: XCTestCase {
                                                 records: [:]))
     }
 
+    func testAssetInCustomAlbumIsSkipped() {
+        XCTAssertFalse(ScanPlanPolicy.needsScan(assetLocalIdentifier: "a",
+                                                modificationDate: modified,
+                                                isExcluded: false,
+                                                isInAlbum: true,
+                                                records: [:]),
+                       "已经在自定义相簿里的照片视为已归类，只扫不在任何相簿中的散图")
+    }
+
+    func testAssetInCustomAlbumIsSkippedEvenWhenModified() {
+        let record = AssetRecord(assetLocalIdentifier: "a",
+                                 scannedAt: Date(),
+                                 faceCount: 2,
+                                 modificationDate: modified)
+        XCTAssertFalse(ScanPlanPolicy.needsScan(assetLocalIdentifier: "a",
+                                                modificationDate: otherModified,
+                                                isExcluded: false,
+                                                isInAlbum: true,
+                                                records: ["a": record]),
+                       "相簿成员资格优先于「内容被修改」：仍不重扫")
+    }
+
     func testAlreadyScannedUnchangedAssetIsSkipped() {
         let record = AssetRecord(assetLocalIdentifier: "a",
                                  scannedAt: Date(),

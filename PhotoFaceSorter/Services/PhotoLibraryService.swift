@@ -37,27 +37,63 @@ final class PhotoLibraryService: Sendable {
         return albums
     }
 
-    /// 系统「照片」App 里的相簿**文件夹**分组：相簿名 -> 文件夹名，以及文件夹顺序。
+    /// 系统「照片」App 的完整文件夹 / 相簿结构。
     ///
     /// 人物页按它分节 —— 你在照片 App 里把相簿归到「家人」「同事」这类文件夹时，
-    /// App 里也按同样的分组展示。只取文件夹的直接子相簿，嵌套文件夹取最近的一层。
+    /// App 里也按同样的分组展示。和旧版的区别：**空文件夹也会返回**，
+    /// 并且每个文件夹都带上其中的相簿（即使那些相簿还没有识别出人物）。
+    /// 只取文件夹的直接子相簿，嵌套文件夹取最近的一层。
     /// 相簿标题在「照片」里是唯一的，所以用标题做键就够了，不必再存相簿 ID。
-    func albumFolderGrouping() -> (folderByAlbumTitle: [String: String], folderOrder: [String]) {
-        var byTitle: [String: String] = [:]
-        var order: [String] = []
+    func albumFolderStructure() -> AlbumFolderStructure {
+        var structure = AlbumFolderStructure()
+
+        // 1) 全部文件夹（含空文件夹），顺序跟随系统
         let folders = PHCollectionList.fetchCollectionLists(with: .folder, subtype: .any, options: nil)
         folders.enumerateObjects { folder, _, _ in
-            guard let folderTitle = folder.localizedTitle, !folderTitle.isEmpty else { return }
-            var hasChildAlbum = false
+            guard let folderTitle = folder.localizedTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !folderTitle.isEmpty else { return }
+            if !structure.folderOrder.contains(folderTitle) { structure.folderOrder.append(folderTitle) }
+
+            var childTitles = structure.albumsByFolder[folderTitle] ?? []
             PHCollection.fetchCollections(in: folder, options: nil).enumerateObjects { collection, _, _ in
                 guard let album = collection as? PHAssetCollection,
-                      let title = album.localizedTitle, !title.isEmpty else { return }
-                if byTitle[title] == nil { byTitle[title] = folderTitle }
-                hasChildAlbum = true
+                      let title = album.localizedTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !title.isEmpty else { return }
+                if structure.folderByAlbumTitle[title] == nil {
+                    structure.folderByAlbumTitle[title] = folderTitle
+                }
+                if !childTitles.contains(title) { childTitles.append(title) }
+                if structure.summaries[title] == nil {
+                    structure.summaries[title] = self.summary(of: album)
+                }
             }
-            if hasChildAlbum, !order.contains(folderTitle) { order.append(folderTitle) }
+            structure.albumsByFolder[folderTitle] = childTitles
         }
-        return (byTitle, order)
+
+        // 2) 自定义相簿：补摘要，并挑出不在任何文件夹里的
+        for album in fetchCustomAlbums() {
+            guard let title = album.localizedTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !title.isEmpty else { continue }
+            if structure.summaries[title] == nil {
+                structure.summaries[title] = summary(of: album)
+            }
+            guard structure.folderByAlbumTitle[title] == nil else { continue }
+            if !structure.ungroupedAlbumTitles.contains(title) {
+                structure.ungroupedAlbumTitles.append(title)
+            }
+        }
+
+        return structure
+    }
+
+    /// 相簿展示摘要：估计张数 + 关键照片。都不需要枚举整个相簿。
+    private func summary(of album: PHAssetCollection) -> AlbumSummary {
+        let estimated = album.estimatedAssetCount
+        let count = (estimated == NSNotFound || estimated < 0)
+            ? PHAsset.fetchAssets(in: album, options: nil).count
+            : estimated
+        let cover = PHAsset.fetchKeyAssets(in: album, options: nil)?.firstObject
+        return AlbumSummary(photoCount: count, coverLocalIdentifier: cover?.localIdentifier)
     }
 
     /// 所有用户相簿的名字（含系统同步 / 导入生成的相簿）。

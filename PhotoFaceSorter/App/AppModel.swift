@@ -152,17 +152,21 @@ final class AppModel: ObservableObject {
 
     // MARK: - 系统相簿文件夹
 
-    /// 系统「照片」App 的文件夹：相簿名 -> 文件夹名（人物页按系统分组展示用）
-    @Published private(set) var folderByAlbumName: [String: String] = [:]
-    /// 文件夹顺序（跟随系统返回顺序）
-    @Published private(set) var folderOrder: [String] = []
+    /// 系统「照片」App 的完整文件夹 / 相簿结构（人物页按它分节展示用）。
+    /// 不只「有人物的文件夹」——空文件夹、还没识别出人物的相簿也在这里。
+    @Published private(set) var folderStructure = AlbumFolderStructure.empty
 
-    /// 刷新系统相簿文件夹分组。
-    /// 在照片 App 里改过文件夹后，重新进入人物页即可更新。
+    /// 刷新系统相簿文件夹结构。
+    ///
+    /// 在照片 App 里改过文件夹后，重新进入人物页即可更新。枚举文件夹、
+    /// 取相簿封面都要走 PhotoKit，放到后台线程，避免进入人物页时卡一下。
     func refreshFolderGrouping() {
-        let grouping = PhotoLibraryService.shared.albumFolderGrouping()
-        folderByAlbumName = grouping.folderByAlbumTitle
-        folderOrder = grouping.folderOrder
+        Task {
+            let structure = await Task.detached(priority: .utility) {
+                PhotoLibraryService.shared.albumFolderStructure()
+            }.value
+            folderStructure = structure
+        }
     }
 
     // MARK: - 人物

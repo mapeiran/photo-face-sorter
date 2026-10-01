@@ -6,10 +6,15 @@ import UIKit
 /// 缩略图很小，放大后必然糊。点开后这里先给一张中等尺寸预览，
 /// 再替换为**原图**（`PHImageManagerMaximumSize`，iCloud 照片会联网下载），
 /// 双指缩放 / 双击放大查看细节。只展示整张照片，不做人脸裁剪。
-/// 右上角菜单可以顺带把当前这张「移到其他人物 / 移出人物 / 标记非人物」。
+///
+/// 两种入口：
+/// - 人物分组：带上 `[FaceSample]`，右上角菜单可以把当前这张
+///   「移到其他人物 / 移出人物 / 标记非人物」；
+/// - 系统相簿：只有照片标识，没有样本，不显示按人物调整的菜单。
 struct PhotoViewerView: View {
-    let samples: [FaceSample]
-    let initialIndex: Int
+    let assetIdentifiers: [String]
+    /// 与 assetIdentifiers 一一对应的样本；来自相簿浏览时为 nil
+    let samples: [FaceSample]?
 
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
@@ -29,20 +34,39 @@ struct PhotoViewerView: View {
     /// 未缩放时左右拖动的跟手位移
     @State private var dragX: CGFloat = 0
 
+    /// 人物分组入口：整组人脸样本
     init(samples: [FaceSample], initialIndex: Int) {
+        self.assetIdentifiers = samples.map { $0.assetLocalIdentifier }
         self.samples = samples
-        self.initialIndex = initialIndex
-        let clamped = min(max(initialIndex, 0), max(0, samples.count - 1))
-        _index = State(initialValue: clamped)
+        _index = State(initialValue: Self.clampedIndex(initialIndex, count: samples.count))
     }
 
-    private var current: FaceSample? {
-        samples.indices.contains(index) ? samples[index] : samples.first
+    /// 系统相簿入口：只按照片标识浏览
+    init(assetIdentifiers: [String], initialIndex: Int) {
+        self.assetIdentifiers = assetIdentifiers
+        self.samples = nil
+        _index = State(initialValue: Self.clampedIndex(initialIndex, count: assetIdentifiers.count))
+    }
+
+    private static func clampedIndex(_ index: Int, count: Int) -> Int {
+        min(max(index, 0), max(0, count - 1))
+    }
+
+    private var count: Int { assetIdentifiers.count }
+
+    private var currentIdentifier: String? {
+        assetIdentifiers.indices.contains(index) ? assetIdentifiers[index] : assetIdentifiers.first
+    }
+
+    /// 当前这张对应的样本（相簿入口为 nil，此时不显示按人物调整的菜单）
+    private var currentSample: FaceSample? {
+        guard let samples, samples.indices.contains(index) else { return nil }
+        return samples[index]
     }
 
     private var displayedImage: UIImage? {
-        guard let current else { return nil }
-        return fullImage ?? previews[current.assetLocalIdentifier]
+        guard let currentIdentifier else { return nil }
+        return fullImage ?? previews[currentIdentifier]
     }
 
     var body: some View {
@@ -51,7 +75,7 @@ struct PhotoViewerView: View {
                 Color.black.ignoresSafeArea()
                 content
             }
-            .navigationTitle(samples.count > 1 ? "\(index + 1) / \(samples.count)" : "查看")
+            .navigationTitle(count > 1 ? "\(index + 1) / \(count)" : "查看")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
@@ -59,19 +83,19 @@ struct PhotoViewerView: View {
                     Button("关闭") { dismiss() }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    if let current {
+                    if currentSample != nil {
                         Menu {
                             Button { showMove = true } label: {
                                 Label("移到其他人物…", systemImage: "arrow.triangle.branch")
                             }
                             Button {
-                                model.moveSamples([current], to: nil)
+                                if let currentSample { model.moveSamples([currentSample], to: nil) }
                                 dismiss()
                             } label: {
                                 Label("移出人物", systemImage: "person.badge.minus")
                             }
                             Button(role: .destructive) {
-                                model.ignoreSamples([current])
+                                if let currentSample { model.ignoreSamples([currentSample]) }
                                 dismiss()
                             } label: {
                                 Label("标记非人物", systemImage: "eye.slash")
@@ -83,8 +107,8 @@ struct PhotoViewerView: View {
                 }
             }
         }
-        .task(id: current?.assetLocalIdentifier) {
-            if let current { await load(current) }
+        .task(id: currentIdentifier) {
+            if let currentIdentifier { await load(currentIdentifier) }
         }
         .onChange(of: index) { _, _ in
             fullImage = nil
@@ -92,7 +116,7 @@ struct PhotoViewerView: View {
         }
         .sheet(isPresented: $showMove) {
             PersonPickerView(title: "移动到", people: model.people) { target in
-                if let current { model.moveSamples([current], to: target) }
+                if let currentSample { model.moveSamples([currentSample], to: target) }
                 showMove = false
                 dismiss()
             }
@@ -144,14 +168,14 @@ struct PhotoViewerView: View {
             }
             .disabled(index <= 0)
 
-            Text("\(index + 1) / \(samples.count)")
+            Text("\(index + 1) / \(count)")
                 .font(.footnote)
                 .foregroundColor(.white.opacity(0.85))
 
             Button { go(to: index + 1) } label: {
                 Image(systemName: "chevron.right").font(.title3)
             }
-            .disabled(index >= samples.count - 1)
+            .disabled(index >= count - 1)
         }
         .foregroundColor(.white)
         .padding(.horizontal, 16)
@@ -163,7 +187,7 @@ struct PhotoViewerView: View {
     // MARK: - 切换
 
     private func go(to newIndex: Int) {
-        guard samples.indices.contains(newIndex), newIndex != index else {
+        guard assetIdentifiers.indices.contains(newIndex), newIndex != index else {
             withAnimation(.easeOut(duration: 0.2)) { dragX = 0 }
             return
         }
@@ -234,18 +258,17 @@ struct PhotoViewerView: View {
 
     // MARK: - 加载
 
-    private func load(_ sample: FaceSample) async {
-        let localIdentifier = sample.assetLocalIdentifier
+    private func load(_ localIdentifier: String) async {
         // 1) 先来一张中等尺寸的预览（本地有缓存时几乎瞬时），避免白屏
         if previews[localIdentifier] == nil,
            let preview = await ThumbnailCache.shared.preview(localIdentifier: localIdentifier,
                                                              maxSide: 1600),
-           current?.assetLocalIdentifier == localIdentifier {
+           currentIdentifier == localIdentifier {
             cache(preview, for: localIdentifier)
         }
         // 2) 再换原图；失败也结束「加载中」，不要把用户困在转圈里
         let original = await ThumbnailCache.shared.original(localIdentifier: localIdentifier)
-        guard current?.assetLocalIdentifier == localIdentifier else { return }
+        guard currentIdentifier == localIdentifier else { return }
         if let original { fullImage = original }
         loadingOriginal = false
     }

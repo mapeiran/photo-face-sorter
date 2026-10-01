@@ -131,7 +131,7 @@ struct ScanView: View {
                 .multilineTextAlignment(.center)
 
             if coordinator.state == .finished && coordinator.total == 0 {
-                Text("没有待扫描的照片（可能已全部扫描，或未授权/被排除相簿过滤）")
+                Text("没有待扫描的照片（散图都已扫描；其余照片已在相簿中，或被排除相簿过滤/未授权）")
                     .font(.footnote)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)

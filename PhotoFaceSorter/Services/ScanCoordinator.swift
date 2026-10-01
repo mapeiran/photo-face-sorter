@@ -124,6 +124,11 @@ final class ScanCoordinator: ObservableObject {
         let excludedAlbums = library.fetchUserAlbums().filter { excludedIDs.contains($0.localIdentifier) }
         let excludedAssetIDs = library.fetchAssetIdentifiers(in: excludedAlbums)
 
+        // 已在**自定义相簿**里的照片视为「已归类」：扫描只处理不在任何相簿中的散图。
+        // 这样重复扫描大相册时不必再对已整理好的照片跑一遍人脸识别。
+        // 注意：只跳扫描，不动这些照片已有的样本 —— 它们仍是按相簿命名的锚点。
+        let albumAssetIDs = library.fetchAssetIdentifiers(in: library.fetchCustomAlbums())
+
         // 清理已从相册删除的照片记录，避免 records.json 无限增长。
         // 仅在「完全访问」下执行：受限访问时 fetch 只返回用户挑选的照片，
         // 此时清理会误删其余照片的扫描进度。
@@ -133,11 +138,13 @@ final class ScanCoordinator: ObservableObject {
             for id in staleIDs { records.removeValue(forKey: id) }
         }
 
-        // 增量范围：从未扫描过的 + 内容被修改过（modificationDate 变化）的照片
+        // 增量范围：从未扫描过的 + 内容被修改过（modificationDate 变化）的照片；
+        // 被排除相簿和已在自定义相簿里的照片都跳过。
         let candidates = assets.filter { asset in
             ScanPlanPolicy.needsScan(assetLocalIdentifier: asset.localIdentifier,
                                      modificationDate: asset.modificationDate,
                                      isExcluded: excludedAssetIDs.contains(asset.localIdentifier),
+                                     isInAlbum: albumAssetIDs.contains(asset.localIdentifier),
                                      records: records)
         }
         // 单次上限：大相册分批扫，避免长时间占用设备/看起来像卡死。

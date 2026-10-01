@@ -12,7 +12,8 @@ struct PeopleView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if model.people.isEmpty {
+                // 即使还没有人物，只要系统里有文件夹/相簿，也要把结构展示出来
+                if model.people.isEmpty && model.folderStructure.isEmpty {
                     ContentUnavailableView("暂无人物",
                                            systemImage: "person.2",
                                            description: Text("先到「扫描」识别人像"))
@@ -22,11 +23,8 @@ struct PeopleView: View {
                             if !model.newAlbumNames.isEmpty {
                                 newAlbumsBanner
                             }
-                            ForEach(folderSections) { group in
-                                section(group.title, people: group.people)
-                            }
-                            if !otherPeople.isEmpty {
-                                section("AI 分组（没有相簿）", people: otherPeople)
+                            ForEach(sections) { group in
+                                section(group)
                             }
                         }
                         .padding()
@@ -84,79 +82,64 @@ struct PeopleView: View {
 
     // MARK: - 分组
 
-    /// 所有相簿命名的人物（含还没标记已查看的新相簿）
-    private var albumPeople: [Person] {
-        model.people.filter { $0.nameIsAuto == true }
-    }
-
-    /// 其余：AI 聚类出的自动编号人物，以及用户手动命名的人物
-    private var otherPeople: [Person] {
-        model.people.filter { $0.nameIsAuto != true }
-    }
-
-    /// 人物页的相簿分节：跟随系统「照片」App 的文件夹
-    private struct FolderSection: Identifiable {
-        let id: String
-        let title: String
-        let people: [Person]
-    }
-
-    /// 按系统文件夹分节；系统里完全没有文件夹时退回一个「相簿」节
-    private var folderSections: [FolderSection] {
-        let albums = albumPeople
-        guard !albums.isEmpty else { return [] }
-        guard !model.folderByAlbumName.isEmpty else {
-            return [FolderSection(id: "相簿", title: "相簿", people: albums)]
-        }
-        var byFolder: [String: [Person]] = [:]
-        var ungrouped: [Person] = []
-        for person in albums {
-            if let folder = model.folderByAlbumName[person.name] {
-                byFolder[folder, default: []].append(person)
-            } else {
-                ungrouped.append(person)
-            }
-        }
-        var sections: [FolderSection] = []
-        for folder in model.folderOrder where byFolder[folder] != nil {
-            sections.append(FolderSection(id: folder,
-                                          title: folder,
-                                          people: byFolder.removeValue(forKey: folder) ?? []))
-        }
-        for folder in byFolder.keys.sorted() {
-            sections.append(FolderSection(id: folder,
-                                          title: folder,
-                                          people: byFolder[folder] ?? []))
-        }
-        if !ungrouped.isEmpty {
-            sections.append(FolderSection(id: "未分组", title: "未分组", people: ungrouped))
-        }
-        return sections
+    /// 全部文件夹（含还没有人物的）+ 未分组相簿 + AI 分组
+    private var sections: [PeopleSectionBuilder.Section] {
+        PeopleSectionBuilder.sections(people: model.people, structure: model.folderStructure)
     }
 
     private func isNew(_ person: Person) -> Bool {
         model.newAlbumNames.contains(person.name)
     }
 
-    private func section(_ title: String, people: [Person]) -> some View {
+    private func section(_ group: PeopleSectionBuilder.Section) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("\(title)（\(people.count)）").font(.headline)
-            LazyVGrid(columns: columns, spacing: 12) {
-                ForEach(people) { person in
-                    if editMode {
-                        Button { toggle(person) } label: { personCell(person) }
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(group.title).font(.headline)
+                Text(subtitle(for: group))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            if group.isEmpty {
+                Text("（空文件夹）")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+            } else {
+                LazyVGrid(columns: columns, spacing: 12) {
+                    ForEach(group.people) { person in
+                        if editMode {
+                            Button { toggle(person) } label: { personCell(person) }
+                                .buttonStyle(.plain)
+                        } else {
+                            NavigationLink {
+                                PersonDetailView(personID: person.id)
+                            } label: {
+                                personCell(person)
+                            }
                             .buttonStyle(.plain)
-                    } else {
-                        NavigationLink {
-                            PersonDetailView(personID: person.id)
-                        } label: {
-                            personCell(person)
                         }
-                        .buttonStyle(.plain)
+                    }
+                    ForEach(group.albumTitles, id: \.self) { title in
+                        if editMode {
+                            albumCell(title).opacity(0.5)
+                        } else {
+                            NavigationLink {
+                                AlbumDetailView(albumTitle: title)
+                            } label: {
+                                albumCell(title)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                 }
             }
         }
+    }
+
+    private func subtitle(for group: PeopleSectionBuilder.Section) -> String {
+        var parts: [String] = []
+        if !group.people.isEmpty { parts.append("\(group.people.count) 位人物") }
+        if !group.albumTitles.isEmpty { parts.append("\(group.albumTitles.count) 个相簿") }
+        return parts.joined(separator: " · ")
     }
 
     private func personCell(_ person: Person) -> some View {
@@ -200,6 +183,37 @@ struct PeopleView: View {
 
             Text(person.displayName).font(.caption).lineLimit(1)
             Text("\(personSamples.count) 张")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        }
+    }
+
+    /// 还没有对应人物的系统相簿：展示封面、名字与张数，点开可看相簿内容
+    private func albumCell(_ title: String) -> some View {
+        let summary = model.folderStructure.summaries[title]
+        return VStack(spacing: 6) {
+            ZStack(alignment: .topLeading) {
+                Group {
+                    if let cover = summary?.coverLocalIdentifier {
+                        AssetThumbnailView(localIdentifier: cover, contentMode: .fill, side: 80)
+                    } else {
+                        Color(.secondarySystemBackground)
+                            .overlay(Image(systemName: "rectangle.stack").foregroundColor(.secondary))
+                    }
+                }
+                .frame(width: 80, height: 80)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                Image(systemName: "rectangle.stack.fill")
+                    .font(.caption2)
+                    .foregroundColor(.white)
+                    .padding(4)
+                    .background(.black.opacity(0.35), in: Circle())
+                    .padding(3)
+            }
+
+            Text(title).font(.caption).lineLimit(1)
+            Text("\(summary?.photoCount ?? 0) 张")
                 .font(.caption2)
                 .foregroundColor(.secondary)
         }
