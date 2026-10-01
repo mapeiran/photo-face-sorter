@@ -361,7 +361,8 @@ struct ProposalPhotosView: View {
     @State private var preview: Preview?
     @State private var busy = false
     @State private var message: String?
-    @State private var showMoveConfirm = false
+    /// 选好照片后点「移动加入」，先选目标系统相簿
+    @State private var showMoveAlbumPicker = false
 
     private struct Preview: Identifiable {
         let id = UUID()
@@ -411,7 +412,7 @@ struct ProposalPhotosView: View {
 
                 HStack(spacing: 12) {
                     Button {
-                        run(.copy)
+                        run(.copy, to: albumName)
                     } label: {
                         Label("复制加入", systemImage: "rectangle.stack.badge.plus")
                     }
@@ -419,9 +420,9 @@ struct ProposalPhotosView: View {
                     .disabled(selectedCount == 0 || busy)
 
                     Button {
-                        showMoveConfirm = true
+                        showMoveAlbumPicker = true
                     } label: {
-                        Label("移动加入", systemImage: "rectangle.stack.badge.minus")
+                        Label("移动加入…", systemImage: "rectangle.stack.badge.minus")
                     }
                     .buttonStyle(.bordered)
                     .disabled(selectedCount == 0 || busy)
@@ -440,12 +441,11 @@ struct ProposalPhotosView: View {
             .padding()
             .background(.ultraThinMaterial)
         }
-        .confirmationDialog("移动加入？", isPresented: $showMoveConfirm, titleVisibility: .visible) {
-            Button("移动", role: .destructive) { run(.move) }
-            Button("取消", role: .cancel) {}
-        } message: {
-            Text("会把选中的照片加入相簿「\(albumName)」，并从其它相簿移除（原图不会删除），"
-                 + "可从执行日志回退。")
+        .sheet(isPresented: $showMoveAlbumPicker) {
+            AlbumPickerView(title: "移动到系统相簿") { targetAlbum in
+                // 选中的照片移到指定的系统相簿（可以是已有相簿，也可以是新建的）
+                run(.move, to: targetAlbum)
+            }
         }
         .alert("完成",
                isPresented: Binding(get: { message != nil },
@@ -462,13 +462,13 @@ struct ProposalPhotosView: View {
         }
     }
 
-    /// 对当前勾选的照片执行「复制加入 / 移动加入」
-    private func run(_ action: RuleAction) {
+    /// 对当前勾选的照片执行「复制加入 / 移动加入」到指定的系统相簿
+    private func run(_ action: RuleAction, to targetAlbum: String) {
         let ids = assetIDs.filter { review.isSelected($0, in: personID) }
         guard !ids.isEmpty else { return }
         busy = true
         Task {
-            let result = await model.exportAssetsToAlbum(ids, albumName: albumName, action: action)
+            let result = await model.exportAssetsToAlbum(ids, albumName: targetAlbum, action: action)
             review.removeAssets(ids, for: personID)
             busy = false
             message = result.message
