@@ -14,6 +14,7 @@ struct AlbumDetailView: View {
     @State private var identifiers: [String] = []
     @State private var loading = true
     @State private var preview: Preview?
+    @State private var detailTarget: PhotoDetailTarget?
 
     private struct Preview: Identifiable {
         let id = UUID()
@@ -50,6 +51,18 @@ struct AlbumDetailView: View {
                                     .cornerRadius(6)
                             }
                             .buttonStyle(.plain)
+                            .contextMenu {
+                                Button {
+                                    detailTarget = PhotoDetailTarget(id: identifiers[index])
+                                } label: {
+                                    Label("查看详情", systemImage: "info.circle")
+                                }
+                                Button {
+                                    PhotoLibraryService.openSystemPhotosApp()
+                                } label: {
+                                    Label("在系统相册中打开", systemImage: "photo.on.rectangle")
+                                }
+                            }
                         }
                     }
                     .padding()
@@ -84,6 +97,9 @@ struct AlbumDetailView: View {
         .task { await load() }
         .fullScreenCover(item: $preview) { preview in
             PhotoViewerView(assetIdentifiers: identifiers, initialIndex: preview.index)
+        }
+        .sheet(item: $detailTarget) { target in
+            PhotoDetailView(assetLocalIdentifier: target.id)
         }
     }
 

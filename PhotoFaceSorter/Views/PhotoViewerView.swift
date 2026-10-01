@@ -25,6 +25,7 @@ struct PhotoViewerView: View {
     @State private var previews: [String: UIImage] = [:]
     @State private var loadingOriginal = true
     @State private var showMove = false
+    @State private var showDetail = false
 
     @State private var index: Int
     @State private var scale: CGFloat = 1
@@ -83,8 +84,18 @@ struct PhotoViewerView: View {
                     Button("关闭") { dismiss() }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    if currentSample != nil {
-                        Menu {
+                    Menu {
+                        // 相簿入口也有这些操作：查看详情 / 去系统「照片」App 打开
+                        Button { showDetail = true } label: {
+                            Label("查看详情", systemImage: "info.circle")
+                        }
+                        Button {
+                            PhotoLibraryService.openSystemPhotosApp()
+                        } label: {
+                            Label("在系统相册中打开", systemImage: "photo.on.rectangle")
+                        }
+                        if currentSample != nil {
+                            Divider()
                             Button { showMove = true } label: {
                                 Label("移到其他人物…", systemImage: "arrow.triangle.branch")
                             }
@@ -100,9 +111,9 @@ struct PhotoViewerView: View {
                             } label: {
                                 Label("标记非人物", systemImage: "eye.slash")
                             }
-                        } label: {
-                            Image(systemName: "ellipsis.circle")
                         }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
                     }
                 }
             }
@@ -119,6 +130,11 @@ struct PhotoViewerView: View {
                 if let currentSample { model.moveSamples([currentSample], to: target) }
                 showMove = false
                 dismiss()
+            }
+        }
+        .sheet(isPresented: $showDetail) {
+            if let currentIdentifier {
+                PhotoDetailView(assetLocalIdentifier: currentIdentifier)
             }
         }
     }

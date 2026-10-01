@@ -23,6 +23,8 @@ struct PersonDetailView: View {
     @State private var selected: Set<UUID> = []
     /// 点击缩略图后全屏查看原图；带上整组样本，方便左右滑动翻看
     @State private var preview: PhotoPreview?
+    /// 长按缩略图 -> 查看照片详情
+    @State private var detailTarget: PhotoDetailTarget?
 
     /// 看图页的入口数据：整组样本 + 起始位置
     private struct PhotoPreview: Identifiable {
@@ -150,6 +152,9 @@ struct PersonDetailView: View {
         .fullScreenCover(item: $preview) { preview in
             PhotoViewerView(samples: preview.samples, initialIndex: preview.index)
         }
+        .sheet(item: $detailTarget) { target in
+            PhotoDetailView(assetLocalIdentifier: target.id)
+        }
     }
 
     @ViewBuilder
@@ -182,6 +187,17 @@ struct PersonDetailView: View {
             }
             .buttonStyle(.plain)
             .contextMenu {
+                Button {
+                    detailTarget = PhotoDetailTarget(id: sample.assetLocalIdentifier)
+                } label: {
+                    Label("查看详情", systemImage: "info.circle")
+                }
+                Button {
+                    PhotoLibraryService.openSystemPhotosApp()
+                } label: {
+                    Label("在系统相册中打开", systemImage: "photo.on.rectangle")
+                }
+                Divider()
                 Button {
                     model.moveSamples([sample], to: nil)
                 } label: {

@@ -167,6 +167,40 @@ final class PhotoLibraryService: Sendable {
         PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil).firstObject
     }
 
+    /// 读取照片详情（类型、尺寸、时间、位置、文件名）。
+    func photoDetail(localIdentifier: String) -> PhotoDetail? {
+        guard let asset = asset(localIdentifier: localIdentifier) else { return nil }
+        return PhotoDetail(
+            mediaTypeText: Self.mediaTypeText(for: asset),
+            pixelWidth: asset.pixelWidth,
+            pixelHeight: asset.pixelHeight,
+            isFavorite: asset.isFavorite,
+            creationDate: asset.creationDate,
+            modificationDate: asset.modificationDate,
+            locationText: asset.location.map {
+                String(format: "%.5f, %.5f", $0.coordinate.latitude, $0.coordinate.longitude)
+            },
+            resourceFileNames: PHAssetResource.assetResources(for: asset).map { $0.originalFilename })
+    }
+
+    private static func mediaTypeText(for asset: PHAsset) -> String {
+        if asset.mediaType == .video { return "视频" }
+        if asset.mediaSubtypes.contains(.photoLive) { return "实况照片" }
+        if asset.mediaSubtypes.contains(.photoScreenshot) { return "截屏" }
+        if asset.mediaSubtypes.contains(.photoPanorama) { return "全景照片" }
+        return "照片"
+    }
+
+    /// 打开系统「照片」App。
+    ///
+    /// iOS 没有公开接口能直接定位到某张具体照片，`photos-redirect://` 是社区通用方案，
+    /// 只能打开「照片」App，由用户自己找到那张；系统若不再支持该 scheme 会静默失败。
+    @MainActor
+    static func openSystemPhotosApp() {
+        guard let url = URL(string: "photos-redirect://") else { return }
+        UIApplication.shared.open(url, options: [:], completionHandler: nil)
+    }
+
     /// 汇总若干相簿内所有照片的标识（用于排除）
     func fetchAssetIdentifiers(in albums: [PHAssetCollection]) -> Set<String> {
         var ids = Set<String>()
