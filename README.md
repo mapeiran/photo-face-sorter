@@ -43,7 +43,7 @@ PhotoFaceSorter/
 ├── App/          入口、AppDelegate（后台任务注册）、全局 AppModel
 ├── Models/       Person / FaceSample / AssetRecord / ClassifyRule / ExecutionLog
 ├── Services/     扫描、人脸检测与特征、聚类、规则引擎、缓存、相册访问
-└── Views/        SwiftUI 页面（人物 / 扫描 / 规则 / 设置）
+└── Views/        SwiftUI 页面（人物 / 归类 / 扫描 / 规则 / 设置）
 PhotoFaceSorterTests/   逻辑层单元测试
 ```
 
@@ -148,6 +148,15 @@ PhotoFaceSorterTests/   逻辑层单元测试
   **单张照片**同样可以移动：看图页右上角菜单、人物详情与相簿里的缩略图长按，都有
   「移到系统相簿…」—— 用 `AlbumPickerView` 选已有相簿或新建，语义一致
   （`AppModel.moveAssetsToAlbum`，同样记一条可回退的执行日志）。
+
+- **「归类审核」把 AI 的提议交给你确认**：底部第 2 个 Tab「归类」
+  （`ClassificationReviewView`）。它把**不在任何系统相簿中**的人脸样本按人物分组
+  （`ClassificationProposalPolicy`，纯函数、有单测），每组显示识别人物名、目标相簿和
+  照片缩略图，并标注目标相簿是「已有相簿」还是「新建相簿」。你可以：勾选 / 取消要归类的
+  照片、「更改」目标相簿（`AlbumPickerView` 选已有或新建）、「重命名」人物（同时把目标
+  相簿名改成新名字）、「确认加入」（复制）/「移动加入」（从其它相簿移除）/「跳过」。
+  **只有点确认才会真正写入系统相簿**，每次确认各记一条可回退的执行日志。
+  没有人脸的照片（无法识别到某个人物）不会出现在这里。
 
 - **扫描页先「看清楚要扫什么」**：扫描页顶部是扫描控件，下方是**系统相簿结构**浏览器 ——
   当前系统的全部文件夹（`AppModel.folderStructure`），每个文件夹可展开列出其中的相簿
