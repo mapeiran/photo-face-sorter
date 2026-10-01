@@ -338,13 +338,28 @@ final class AppModel: ObservableObject {
         }
         guard !assetIDs.isEmpty else { return "该人物还没有照片。" }
         do {
-            let outcome = try await PersonAlbumExporter.export(personName: person.displayName,
+            let outcome = try await PersonAlbumExporter.export(albumName: person.displayName,
                                                                assetIDs: assetIDs,
                                                                action: action)
             if let log = outcome.log { appendLog(log) }
             return outcome.summary
         } catch {
             return "写入系统相簿失败：\(error.localizedDescription)"
+        }
+    }
+
+    /// 把单张（或几张）照片**移动**到指定系统相簿，返回给用户看的总结。
+    /// 会从其它相簿移除（原图不删除），并记一条执行日志（可回退）。
+    func moveAssetsToAlbum(_ assetIDs: [String], albumName: String) async -> String {
+        guard !assetIDs.isEmpty else { return "没有可移动的照片。" }
+        do {
+            let outcome = try await PersonAlbumExporter.export(albumName: albumName,
+                                                               assetIDs: assetIDs,
+                                                               action: .move)
+            if let log = outcome.log { appendLog(log) }
+            return outcome.summary
+        } catch {
+            return "移动到相簿失败：\(error.localizedDescription)"
         }
     }
 

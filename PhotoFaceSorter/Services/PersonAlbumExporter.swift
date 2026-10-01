@@ -22,16 +22,16 @@ enum PersonAlbumExporter {
     }
 
     /// - Parameters:
-    ///   - personName: 相簿名（也是人物名）；不存在会新建。
-    ///   - assetIDs: 该人物所有照片的 localIdentifier（内部去重）。
+    ///   - albumName: 目标系统相簿名；不存在会新建。
+    ///   - assetIDs: 要写入的照片 localIdentifier（内部去重）。
     ///   - action: copy 只加入相簿；move 额外从其它相簿移除。
-    static func export(personName: String,
+    static func export(albumName: String,
                        assetIDs: [String],
                        action: RuleAction) async throws -> Outcome {
         let uniqueIDs = Array(Set(assetIDs))
-        let rule = ClassifyRule(name: personName, action: action, targetAlbumName: personName)
+        let rule = ClassifyRule(name: albumName, action: action, targetAlbumName: albumName)
         let log = try await RuleEngine().execute(rule: rule, assetIDs: uniqueIDs)
-        return Outcome(albumName: personName,
+        return Outcome(albumName: albumName,
                        addedCount: log?.assetLocalIdentifiers.count ?? 0,
                        action: action,
                        log: log)

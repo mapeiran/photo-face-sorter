@@ -26,6 +26,8 @@ struct PhotoViewerView: View {
     @State private var loadingOriginal = true
     @State private var showMove = false
     @State private var showDetail = false
+    @State private var showAlbumPicker = false
+    @State private var albumMessage: String?
 
     @State private var index: Int
     @State private var scale: CGFloat = 1
@@ -94,6 +96,9 @@ struct PhotoViewerView: View {
                         } label: {
                             Label("在系统相册中打开", systemImage: "photo.on.rectangle")
                         }
+                        Button { showAlbumPicker = true } label: {
+                            Label("移到系统相簿…", systemImage: "rectangle.stack.badge.minus")
+                        }
                         if currentSample != nil {
                             Divider()
                             Button { showMove = true } label: {
@@ -136,6 +141,26 @@ struct PhotoViewerView: View {
             if let currentIdentifier {
                 PhotoDetailView(assetLocalIdentifier: currentIdentifier)
             }
+        }
+        .sheet(isPresented: $showAlbumPicker) {
+            AlbumPickerView(title: "移到系统相簿") { albumName in
+                moveCurrent(to: albumName)
+            }
+        }
+        .alert("完成",
+               isPresented: Binding(get: { albumMessage != nil },
+                                    set: { if !$0 { albumMessage = nil } })) {
+            Button("好", role: .cancel) { albumMessage = nil }
+        } message: {
+            Text(albumMessage ?? "")
+        }
+    }
+
+    /// 把当前这张照片移到选定的系统相簿
+    private func moveCurrent(to albumName: String) {
+        guard let currentIdentifier else { return }
+        Task {
+            albumMessage = await model.moveAssetsToAlbum([currentIdentifier], albumName: albumName)
         }
     }
 

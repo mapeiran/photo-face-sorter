@@ -145,6 +145,9 @@ PhotoFaceSorterTests/   逻辑层单元测试
   （`PersonAlbumExporter` → 复用 `RuleEngine.execute`），把该人物的照片写进去；
   `AppModel.exportPersonToAlbum` 负责去重取照片并记一条执行日志，所以能在执行日志里
   **回退**。复制只增不改；「移动」会从其它相簿移除这些照片（原图始终不删除），带二次确认。
+  **单张照片**同样可以移动：看图页右上角菜单、人物详情与相簿里的缩略图长按，都有
+  「移到系统相簿…」—— 用 `AlbumPickerView` 选已有相簿或新建，语义一致
+  （`AppModel.moveAssetsToAlbum`，同样记一条可回退的执行日志）。
 
 - **扫描页先「看清楚要扫什么」**：扫描页顶部是扫描控件，下方是**系统相簿结构**浏览器 ——
   当前系统的全部文件夹（`AppModel.folderStructure`），每个文件夹可展开列出其中的相簿

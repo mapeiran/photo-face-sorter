@@ -15,6 +15,9 @@ struct AlbumDetailView: View {
     @State private var loading = true
     @State private var preview: Preview?
     @State private var detailTarget: PhotoDetailTarget?
+    /// 单张照片 -> 移到系统相簿
+    @State private var albumPickAssetID: String?
+    @State private var albumMessage: String?
 
     private struct Preview: Identifiable {
         let id = UUID()
@@ -62,6 +65,11 @@ struct AlbumDetailView: View {
                                 } label: {
                                     Label("在系统相册中打开", systemImage: "photo.on.rectangle")
                                 }
+                                Button {
+                                    albumPickAssetID = identifiers[index]
+                                } label: {
+                                    Label("移到系统相簿…", systemImage: "rectangle.stack.badge.minus")
+                                }
                             }
                         }
                     }
@@ -100,6 +108,26 @@ struct AlbumDetailView: View {
         }
         .sheet(item: $detailTarget) { target in
             PhotoDetailView(assetLocalIdentifier: target.id)
+        }
+        .sheet(isPresented: Binding(get: { albumPickAssetID != nil },
+                                    set: { if !$0 { albumPickAssetID = nil } })) {
+            AlbumPickerView(title: "移到系统相簿") { albumName in
+                if let id = albumPickAssetID { moveToAlbum(id: id, albumName: albumName) }
+            }
+        }
+        .alert("完成",
+               isPresented: Binding(get: { albumMessage != nil },
+                                    set: { if !$0 { albumMessage = nil } })) {
+            Button("好", role: .cancel) { albumMessage = nil }
+        } message: {
+            Text(albumMessage ?? "")
+        }
+    }
+
+    /// 把单张照片移到选定的系统相簿
+    private func moveToAlbum(id: String, albumName: String) {
+        Task {
+            albumMessage = await model.moveAssetsToAlbum([id], albumName: albumName)
         }
     }
 
