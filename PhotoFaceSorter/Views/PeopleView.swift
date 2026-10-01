@@ -19,8 +19,8 @@ struct PeopleView: View {
                 } else {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 20) {
-                            if !newAlbumPeople.isEmpty {
-                                section("新增相簿", people: newAlbumPeople, showsMarkViewed: true)
+                            if !model.newAlbumNames.isEmpty {
+                                newAlbumsBanner
                             }
                             ForEach(folderSections) { group in
                                 section(group.title, people: group.people)
@@ -69,18 +69,24 @@ struct PeopleView: View {
         }
     }
 
-    // MARK: - 分组
-
-    /// 「新增相簿」：由相簿命名、但还没「标记已查看」的人物
-    private var newAlbumPeople: [Person] {
-        let new = model.newAlbumNames
-        return model.people.filter { $0.nameIsAuto == true && new.contains($0.name) }
+    /// 有新相簿时顶部提示：新增的相簿已经按文件夹归位，只是打了「新增」标记
+    private var newAlbumsBanner: some View {
+        HStack(spacing: 12) {
+            Label("新增相簿 \(model.newAlbumNames.count) 个", systemImage: "sparkles")
+                .font(.subheadline)
+            Spacer()
+            Button("标记已查看") { model.markNewAlbumsViewed() }
+                .font(.footnote)
+        }
+        .padding(10)
+        .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
     }
 
-    /// 「已有相簿」：相簿命名且已经标记过的人物
-    private var existingAlbumPeople: [Person] {
-        let new = model.newAlbumNames
-        return model.people.filter { $0.nameIsAuto == true && !new.contains($0.name) }
+    // MARK: - 分组
+
+    /// 所有相簿命名的人物（含还没标记已查看的新相簿）
+    private var albumPeople: [Person] {
+        model.people.filter { $0.nameIsAuto == true }
     }
 
     /// 其余：AI 聚类出的自动编号人物，以及用户手动命名的人物
@@ -95,16 +101,16 @@ struct PeopleView: View {
         let people: [Person]
     }
 
-    /// 按系统文件夹分节；没有文件夹时退回一个「已有相簿」节
+    /// 按系统文件夹分节；系统里完全没有文件夹时退回一个「相簿」节
     private var folderSections: [FolderSection] {
-        let viewed = existingAlbumPeople
-        guard !viewed.isEmpty else { return [] }
+        let albums = albumPeople
+        guard !albums.isEmpty else { return [] }
         guard !model.folderByAlbumName.isEmpty else {
-            return [FolderSection(id: "已有相簿", title: "已有相簿", people: viewed)]
+            return [FolderSection(id: "相簿", title: "相簿", people: albums)]
         }
         var byFolder: [String: [Person]] = [:]
         var ungrouped: [Person] = []
-        for person in viewed {
+        for person in albums {
             if let folder = model.folderByAlbumName[person.name] {
                 byFolder[folder, default: []].append(person)
             } else {
@@ -128,18 +134,13 @@ struct PeopleView: View {
         return sections
     }
 
-    private func section(_ title: String,
-                         people: [Person],
-                         showsMarkViewed: Bool = false) -> some View {
+    private func isNew(_ person: Person) -> Bool {
+        model.newAlbumNames.contains(person.name)
+    }
+
+    private func section(_ title: String, people: [Person]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("\(title)（\(people.count)）").font(.headline)
-                Spacer()
-                if showsMarkViewed {
-                    Button("标记已查看") { model.markNewAlbumsViewed() }
-                        .font(.footnote)
-                }
-            }
+            Text("\(title)（\(people.count)）").font(.headline)
             LazyVGrid(columns: columns, spacing: 12) {
                 ForEach(people) { person in
                     if editMode {
@@ -176,6 +177,17 @@ struct PeopleView: View {
                 }
                 .frame(width: 80, height: 80)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(alignment: .topLeading) {
+                    if isNew(person) {
+                        Text("新增")
+                            .font(.caption2)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Color.accentColor, in: Capsule())
+                            .padding(3)
+                    }
+                }
 
                 if editMode {
                     Image(systemName: selected.contains(person.id) ? "checkmark.circle.fill" : "circle")
