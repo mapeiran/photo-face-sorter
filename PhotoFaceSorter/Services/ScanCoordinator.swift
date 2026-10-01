@@ -38,6 +38,11 @@ final class ScanCoordinator: ObservableObject {
     /// 用来在进度 100% 时提示用户「还有货，再点一次继续」，避免误以为已全部扫完。
     @Published var remaining = 0
 
+    /// 系统自定义相簿里的照片数（扫描跳过）。
+    @Published private(set) var albumPhotoCount = 0
+    /// 不在任何相簿中、会被识别的散图数。
+    @Published private(set) var loosePhotoCount = 0
+
     // 这些服务都无状态且 Sendable，标记 nonisolated 以便在后台线程上使用
     private nonisolated let detector = FaceDetectionService()
     private nonisolated let embedder = FaceEmbeddingService()
@@ -49,6 +54,7 @@ final class ScanCoordinator: ObservableObject {
     private let flushInterval = 100
 
     private var runTask: Task<Void, Never>?
+    private var countTask: Task<Void, Never>?
     private var paused = false
     private var stopped = false
 
@@ -88,6 +94,22 @@ final class ScanCoordinator: ObservableObject {
         stopped = true
         runTask?.cancel()
         state = .idle
+    }
+
+    /// 统计「相簿内 / 散图」数量，供扫描页展示扫描范围。不真正扫描。
+    /// 枚举整个相册是重活，放到后台线程；扫描进行中不刷新，避免与扫描互相覆盖。
+    func refreshLibraryCounts() {
+        guard state == .idle || state == .finished else { return }
+        countTask?.cancel()
+        countTask = Task {
+            let counts = await Task.detached(priority: .utility) {
+                let excluded = Set(UserDefaults.standard.stringArray(forKey: "excludedAlbumIDs") ?? [])
+                return PhotoLibraryService.shared.photoCounts(excludingAlbumIDs: excluded)
+            }.value
+            guard !Task.isCancelled else { return }
+            albumPhotoCount = counts.albumPhotos
+            loosePhotoCount = counts.loosePhotos
+        }
     }
 
     // MARK: - 扫描准备（后台线程）

@@ -96,6 +96,19 @@ final class PhotoLibraryService: Sendable {
         return AlbumSummary(photoCount: count, coverLocalIdentifier: cover?.localIdentifier)
     }
 
+    /// 扫描页用的计数：自定义相簿里的照片数（会跳过）与不在相簿中的散图数（会被识别）。
+    /// - Parameter excludedAlbumIDs: 被排除的相簿；它们的照片两边都不算。
+    func photoCounts(excludingAlbumIDs excludedIDs: Set<String>) -> LibraryPhotoCounts {
+        let allAssetIDs = Set(fetchAllPhotoAssets().map { $0.localIdentifier })
+        let customAlbums = fetchCustomAlbums().filter { !excludedIDs.contains($0.localIdentifier) }
+        let albumAssetIDs = fetchAssetIdentifiers(in: customAlbums)
+        let excludedAlbums = fetchUserAlbums().filter { excludedIDs.contains($0.localIdentifier) }
+        let excludedAssetIDs = fetchAssetIdentifiers(in: excludedAlbums)
+        return LibraryPhotoCountPolicy.counts(allAssetIDs: allAssetIDs,
+                                              albumAssetIDs: albumAssetIDs,
+                                              excludedAssetIDs: excludedAssetIDs)
+    }
+
     /// 所有用户相簿的名字（含系统同步 / 导入生成的相簿）。
     ///
     /// 用途：识别「上一版是按相簿名自动命名的人物」。这些名字是可重新推导的，

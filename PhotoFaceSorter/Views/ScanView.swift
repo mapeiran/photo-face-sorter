@@ -14,16 +14,20 @@ struct ScanView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 24) {
+            Group {
                 if authorized {
-                    scanContent
+                    // 扫描控件 + 系统相簿结构都要能滚动查看
+                    ScrollView { scanContent.padding() }
                 } else {
-                    permissionContent
+                    permissionContent.padding()
                 }
             }
-            .padding()
             .navigationTitle("扫描")
-            .task { await requestAuthorization() }
+            .task {
+                await requestAuthorization()
+                model.refreshFolderGrouping()
+                coordinator.refreshLibraryCounts()
+            }
             .onChange(of: coordinator.state) { _, newState in
                 if newState == .finished {
                     model.reload()
@@ -153,8 +157,107 @@ struct ScanView: View {
                     .multilineTextAlignment(.center)
             }
 
-            Spacer()
+            Divider()
+
+            libraryStructure
         }
+    }
+
+    // MARK: - 系统相簿结构（扫描范围一目了然）
+
+    /// 展示当前系统「照片」App 的全部文件夹、文件夹里的相簿，点进相簿看照片；
+    /// 顶部说明哪些照片会被扫描跳过、哪些散图会被识别。
+    private var libraryStructure: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("系统相簿结构").font(.headline)
+                Spacer()
+                Button {
+                    model.refreshFolderGrouping()
+                    coordinator.refreshLibraryCounts()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .font(.footnote)
+            }
+
+            Text("相簿内 \(coordinator.albumPhotoCount) 张（扫描时跳过识别）"
+                 + " · 不在相簿中的散图 \(coordinator.loosePhotoCount) 张（会被识别）")
+                .font(.footnote)
+                .foregroundColor(.secondary)
+
+            if model.folderStructure.folderOrder.isEmpty
+                && model.folderStructure.ungroupedAlbumTitles.isEmpty {
+                Text("没有读取到文件夹或相簿")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+            } else {
+                ForEach(model.folderStructure.folderOrder, id: \.self) { folder in
+                    folderDisclosure(title: folder,
+                                     albums: model.folderStructure.albumsByFolder[folder] ?? [])
+                }
+                if !model.folderStructure.ungroupedAlbumTitles.isEmpty {
+                    folderDisclosure(title: "未分组",
+                                     albums: model.folderStructure.ungroupedAlbumTitles)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func folderDisclosure(title: String, albums: [String]) -> some View {
+        DisclosureGroup {
+            VStack(spacing: 0) {
+                ForEach(albums, id: \.self) { album in
+                    NavigationLink {
+                        AlbumDetailView(albumTitle: album)
+                    } label: {
+                        albumRow(album)
+                    }
+                    .buttonStyle(.plain)
+                    if album != albums.last { Divider() }
+                }
+            }
+            .padding(.top, 4)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "folder").foregroundColor(.accentColor)
+                Text(title).font(.subheadline).bold()
+                Spacer()
+                Text("\(albums.count) 个相簿")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func albumRow(_ title: String) -> some View {
+        let summary = model.folderStructure.summaries[title]
+        return HStack(spacing: 10) {
+            Group {
+                if let cover = summary?.coverLocalIdentifier {
+                    AssetThumbnailView(localIdentifier: cover, contentMode: .fill, side: 40)
+                } else {
+                    Color(.secondarySystemBackground)
+                        .overlay(Image(systemName: "rectangle.stack")
+                            .font(.caption2)
+                            .foregroundColor(.secondary))
+                }
+            }
+            .frame(width: 40, height: 40)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+
+            Text(title).font(.subheadline).foregroundColor(.primary)
+            Spacer()
+            Text("\(summary?.photoCount ?? 0) 张")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            Image(systemName: "chevron.right")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+        .contentShape(Rectangle())
     }
 
     /// 特征提取方式变了：缓存的人脸特征与新版不可比

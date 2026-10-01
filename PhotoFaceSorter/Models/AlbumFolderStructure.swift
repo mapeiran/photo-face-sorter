@@ -29,3 +29,11 @@ struct AlbumSummary: Equatable {
     var photoCount: Int
     var coverLocalIdentifier: String?
 }
+
+/// 「相簿内照片 / 不在相簿中的散图」两类计数，用于扫描页说明扫描范围。
+struct LibraryPhotoCounts: Equatable, Sendable {
+    /// 在自定义相簿里的照片数（扫描会跳过）
+    var albumPhotos: Int
+    /// 不在任何相簿中、会被识别的散图数（被排除相簿的照片不算）
+    var loosePhotos: Int
+}
