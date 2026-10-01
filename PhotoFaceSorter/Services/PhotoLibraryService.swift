@@ -318,6 +318,46 @@ final class PhotoLibraryService: Sendable {
         return result
     }
 
+    /// 系统「照片」App 里的全部文件夹（按名称排序），供「新建相簿放入哪个文件夹」选择。
+    func fetchFolders() -> [AlbumFolderInfo] {
+        var result: [AlbumFolderInfo] = []
+        let folders = PHCollectionList.fetchCollectionLists(with: .folder, subtype: .any, options: nil)
+        folders.enumerateObjects { folder, _, _ in
+            guard let title = folder.localizedTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !title.isEmpty else { return }
+            result.append(AlbumFolderInfo(id: folder.localIdentifier, title: title))
+        }
+        return result.sorted { AlbumTitleOrdering.isOrderedBefore($0.title, $1.title) }
+    }
+
+    /// 新建相簿；给了 folderID 就把这本新相簿放进那个文件夹（文件夹找不到时留在顶层）。
+    func createAlbum(named name: String, inFolderID folderID: String?) -> PHAssetCollection? {
+        var placeholder: PHObjectPlaceholder?
+        do {
+            try PHPhotoLibrary.shared().performChangesAndWait {
+                let request = PHAssetCollectionChangeRequest.creationRequestForAssetCollection(withTitle: name)
+                placeholder = request.placeholderForCreatedAssetCollection
+            }
+        } catch {
+            return nil
+        }
+        guard let localID = placeholder?.localIdentifier,
+              let album = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [localID],
+                                                                  options: nil).firstObject else {
+            return nil
+        }
+
+        if let folderID,
+           let folder = PHCollectionList.fetchCollectionLists(withLocalIdentifiers: [folderID],
+                                                              options: nil).firstObject {
+            try? PHPhotoLibrary.shared().performChanges {
+                guard let request = PHCollectionListChangeRequest(for: folder) else { return }
+                request.addChildCollections([album] as NSArray)
+            }
+        }
+        return album
+    }
+
     func createOrFetchAlbum(named name: String) -> PHAssetCollection? {
         if let existing = album(named: name) { return existing }
 

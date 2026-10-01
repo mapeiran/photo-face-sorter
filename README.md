@@ -150,7 +150,9 @@ PhotoFaceSorterTests/   逻辑层单元测试
   「移到系统相簿…」—— 用 `AlbumPickerView` 选已有相簿或新建（已有相簿**按系统「照片」文件夹分节**
   `AlbumFolderSectioning`，顺序跟随系统，没进文件夹的归「未分组」；节内按名称排序
   `AlbumTitleOrdering`；文件夹可点击**展开 / 收起**，默认收起、左上角可一键展开全部、
-  **搜索时自动展开**；顶部可**搜索**相簿，搜不到时可以用关键词直接新建），语义一致
+  **搜索时自动展开**；顶部可**搜索**相簿，搜不到时可以用关键词直接新建；
+  **新建相簿时可选择放进哪个系统文件夹**（`PhotoLibraryService.createAlbum(named:inFolderID:)`
+  → `PHCollectionListChangeRequest.addChildCollections`，默认「顶层」）），语义一致
   （`AppModel.moveAssetsToAlbum`，同样记一条可回退的执行日志）。
 
 - **「归类审核」把 AI 的提议交给你确认**：底部第 2 个 Tab「归类」

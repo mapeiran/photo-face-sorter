@@ -14,6 +14,9 @@ struct AlbumPickerView: View {
     @State private var folderOrder: [String] = []
     /// 已展开的文件夹（默认收起，也可以一键展开/收起）
     @State private var expandedFolders: Set<String> = []
+    /// 新建相簿要放入的文件夹（nil = 顶层）
+    @State private var folders: [AlbumFolderInfo] = []
+    @State private var selectedFolderID: String?
 
     /// 搜索过滤后的已有相簿（保持按名称排序）
     private var filteredAlbums: [PHAssetCollection] {
@@ -43,10 +46,28 @@ struct AlbumPickerView: View {
                         Button("创建") { create() }
                             .disabled(trimmedNewName.isEmpty)
                     }
+                    if !folders.isEmpty {
+                        Menu {
+                            Button("顶层（不放入文件夹）") { selectedFolderID = nil }
+                            ForEach(folders) { folder in
+                                Button(folder.title) { selectedFolderID = folder.id }
+                            }
+                        } label: {
+                            HStack {
+                                Text("放入文件夹").foregroundColor(.primary)
+                                Spacer()
+                                Text(selectedFolderTitle).foregroundColor(.secondary)
+                                Image(systemName: "chevron.up.chevron.down")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
                 } header: {
                     Text("新建相簿")
                 } footer: {
-                    Text("移动会把照片从其它相簿移除（原图不会删除），并记入执行日志，可回退。")
+                    Text("新建的相簿会放进上面选择的文件夹；「移动」会把照片从其它相簿移除"
+                         + "（原图不会删除），并记入执行日志，可回退。")
                 }
 
                 if sections.isEmpty {
@@ -78,9 +99,12 @@ struct AlbumPickerView: View {
                    !albums.contains(where: { $0.localizedTitle == trimmedSearchText }) {
                     Section {
                         Button {
-                            pick(trimmedSearchText)
+                            let name = trimmedSearchText
+                            createAlbumIfNeeded(named: name)
+                            pick(name)
                         } label: {
-                            Label("新建相簿「\(trimmedSearchText)」", systemImage: "plus.circle")
+                            Label("新建相簿「\(trimmedSearchText)」（\(selectedFolderTitle)）",
+                                  systemImage: "plus.circle")
                         }
                     }
                 }
@@ -110,6 +134,7 @@ struct AlbumPickerView: View {
                 let grouping = PhotoLibraryService().albumFolderGrouping()
                 folderByTitle = grouping.folderByAlbumTitle
                 folderOrder = grouping.folderOrder
+                folders = PhotoLibraryService().fetchFolders()
             }
         }
     }
@@ -147,8 +172,23 @@ struct AlbumPickerView: View {
     private func create() {
         let name = trimmedNewName
         guard !name.isEmpty else { return }
-        onPick(name)
-        dismiss()
+        createAlbumIfNeeded(named: name)
+        pick(name)
+    }
+
+    /// 顶层没有同名相簿时新建一本，并放进选中的文件夹；已有同名相簿就直接复用（不改它的文件夹）。
+    private func createAlbumIfNeeded(named name: String) {
+        let library = PhotoLibraryService()
+        guard library.album(named: name) == nil else { return }
+        _ = library.createAlbum(named: name, inFolderID: selectedFolderID)
+    }
+
+    private var selectedFolderTitle: String {
+        guard let selectedFolderID,
+              let folder = folders.first(where: { $0.id == selectedFolderID }) else {
+            return "顶层"
+        }
+        return folder.title
     }
 
     private func pick(_ name: String) {

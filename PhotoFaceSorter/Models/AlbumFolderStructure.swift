@@ -34,6 +34,13 @@ struct AlbumSummary: Equatable {
     var coverLocalIdentifier: String?
 }
 
+/// 一个系统「照片」文件夹（供选择器展示 / 选择「新建相簿放哪个文件夹」）。
+struct AlbumFolderInfo: Identifiable, Equatable, Sendable {
+    /// PHCollectionList localIdentifier
+    let id: String
+    let title: String
+}
+
 /// 「相簿内照片 / 不在相簿中的散图」两类计数，用于扫描页说明扫描范围。
 struct LibraryPhotoCounts: Equatable, Sendable {
     /// 在自定义相簿里的照片数（扫描会跳过）
