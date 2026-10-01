@@ -9,6 +9,18 @@ struct AlbumPickerView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var albums: [PHAssetCollection] = []
     @State private var newName = ""
+    @State private var searchText = ""
+
+    /// 搜索过滤后的已有相簿（保持按名称排序）
+    private var filteredAlbums: [PHAssetCollection] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return albums }
+        return albums.filter { ($0.localizedTitle ?? "").localizedStandardContains(query) }
+    }
+
+    private var trimmedSearchText: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     var body: some View {
         NavigationStack {
@@ -26,10 +38,11 @@ struct AlbumPickerView: View {
                 }
 
                 Section("已有相簿") {
-                    if albums.isEmpty {
-                        Text("没有可选的相簿").foregroundColor(.secondary)
+                    if filteredAlbums.isEmpty {
+                        Text(trimmedSearchText.isEmpty ? "没有可选的相簿" : "没有匹配的相簿")
+                            .foregroundColor(.secondary)
                     } else {
-                        ForEach(albums, id: \.localIdentifier) { album in
+                        ForEach(filteredAlbums, id: \.localIdentifier) { album in
                             Button {
                                 pick(album.localizedTitle ?? "")
                             } label: {
@@ -42,10 +55,20 @@ struct AlbumPickerView: View {
                             }
                         }
                     }
+                    // 搜索时可以直接用关键词新建相簿
+                    if !trimmedSearchText.isEmpty,
+                       !albums.contains(where: { $0.localizedTitle == trimmedSearchText }) {
+                        Button {
+                            pick(trimmedSearchText)
+                        } label: {
+                            Label("新建相簿「\(trimmedSearchText)」", systemImage: "plus.circle")
+                        }
+                    }
                 }
             }
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $searchText, prompt: "搜索相簿")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("取消") { dismiss() }

@@ -9,14 +9,22 @@ struct ExcludedAlbumsView: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var coordinator: ScanCoordinator
     @State private var albums: [PHAssetCollection] = []
+    @State private var searchText = ""
+
+    private var filteredAlbums: [PHAssetCollection] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return albums }
+        return albums.filter { ($0.localizedTitle ?? "").localizedStandardContains(query) }
+    }
 
     var body: some View {
         List {
             Section {
-                if albums.isEmpty {
-                    Text("没有可选的相簿").foregroundColor(.secondary)
+                if filteredAlbums.isEmpty {
+                    Text(searchText.isEmpty ? "没有可选的相簿" : "没有匹配的相簿")
+                        .foregroundColor(.secondary)
                 } else {
-                    ForEach(albums, id: \.localIdentifier) { album in
+                    ForEach(filteredAlbums, id: \.localIdentifier) { album in
                         Button {
                             toggle(album)
                         } label: {
@@ -39,6 +47,7 @@ struct ExcludedAlbumsView: View {
             }
         }
         .navigationTitle("排除相簿")
+        .searchable(text: $searchText, prompt: "搜索相簿")
         .onAppear {
             albums = PhotoLibraryService().fetchUserAlbums().sorted {
                 AlbumTitleOrdering.isOrderedBefore($0.localizedTitle, $1.localizedTitle)
