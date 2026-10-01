@@ -111,7 +111,9 @@ struct PhotoViewerView: View {
                     .offset(x: offset.width + dragX, y: offset.height)
                     .gesture(magnifyGesture)
                     .simultaneousGesture(dragGesture)
+                    // 双击放大；单击退出（单击会先等双击判定失败，属正常行为）
                     .onTapGesture(count: 2) { toggleZoom() }
+                    .onTapGesture { dismiss() }
             }
             .overlay(alignment: .top) { statusOverlay }
             .overlay(alignment: .bottom) { navigationOverlay }
