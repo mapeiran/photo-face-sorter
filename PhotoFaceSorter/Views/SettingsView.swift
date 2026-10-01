@@ -60,6 +60,11 @@ struct SettingsView: View {
                 Section("缓存管理") {
                     Button("清空人脸识别缓存") { model.clearFaceCache() }
                     Button("清空执行日志") { model.clearLogs() }
+                    NavigationLink {
+                        ExecutionLogView()
+                    } label: {
+                        Label("执行日志（可回退归类）", systemImage: "list.bullet.rectangle")
+                    }
                 }
 
                 Section("扫描范围") {
@@ -102,7 +107,6 @@ struct SettingsView: View {
                 Section("关于") {
                     LabeledContent("版本", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
                     LabeledContent("人物数", value: "\(model.people.count)")
-                    LabeledContent("规则数", value: "\(model.rules.count)")
                 }
             }
             .navigationTitle("设置")

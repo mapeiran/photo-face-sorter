@@ -7,9 +7,6 @@ struct ScanView: View {
     @EnvironmentObject var coordinator: ScanCoordinator
     @State private var authorized = false
 
-    @State private var pendingRules: [ClassifyRule] = []
-    @State private var showRunConfirm = false
-    @State private var runMessage: String?
     @State private var showFullRescanConfirm = false
     /// 扫描页相簿结构里被展开的文件夹（默认折叠）
     @State private var expandedFolders: Set<String> = []
@@ -34,24 +31,7 @@ struct ScanView: View {
                 if newState == .finished {
                     model.reload()
                     model.loadSamplesAsync()
-                    prepareRules()
                 }
-            }
-            .confirmationDialog("执行自动归类规则？", isPresented: $showRunConfirm, titleVisibility: .visible) {
-                Button("执行") { executePendingRules() }
-                Button("稍后", role: .cancel) { pendingRules = [] }
-            } message: {
-                let moveCount = pendingRules.filter { $0.action == .move }.count
-                Text(moveCount > 0
-                     ? "共 \(pendingRules.count) 条规则，含 \(moveCount) 条「移动」：匹配照片会被移出其它相簿（原图不会被删除），可从执行日志回退。"
-                     : "共 \(pendingRules.count) 条规则，将把匹配照片复制到目标相簿。")
-            }
-            .alert("完成", isPresented: Binding(
-                get: { runMessage != nil },
-                set: { if !$0 { runMessage = nil } })) {
-                Button("好", role: .cancel) { runMessage = nil }
-            } message: {
-                Text(runMessage ?? "")
             }
         }
     }
@@ -162,6 +142,13 @@ struct ScanView: View {
                      + "它们没有被标记为已扫描，下次扫描会自动重试。")
                     .font(.footnote)
                     .foregroundColor(.orange)
+                    .multilineTextAlignment(.center)
+            }
+
+            if coordinator.state == .finished && coordinator.scanned > 0 {
+                Text("识别完成，去「归类」页确认这些散图写到哪本相簿。")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
             }
 
@@ -358,26 +345,4 @@ struct ScanView: View {
         authorized = (status == .authorized || status == .limited)
     }
 
-    // MARK: - 规则
-
-    private func prepareRules() {
-        let enabled = model.rules.filter { $0.enabled }
-        guard !enabled.isEmpty else { return }
-        pendingRules = enabled
-        showRunConfirm = true
-    }
-
-    private func executePendingRules() {
-        let rules = pendingRules
-        pendingRules = []
-        Task {
-            let outcome = await RuleRunner().runAll(rules: rules,
-                                                    samples: model.samples,
-                                                    records: model.store.records)
-            await MainActor.run {
-                outcome.logs.forEach { model.appendLog($0) }
-                runMessage = outcome.summary
-            }
-        }
-    }
 }

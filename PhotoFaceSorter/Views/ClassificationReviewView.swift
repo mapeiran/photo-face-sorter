@@ -83,6 +83,16 @@ struct ClassificationReviewView: View {
     @State private var renameText = ""
     @State private var busyPersonID: UUID?
     @State private var message: String?
+    /// 点缩略图 -> 全屏看图
+    @State private var previewTarget: PreviewTarget?
+    /// 长按 -> 图片详情
+    @State private var detailTarget: PhotoDetailTarget?
+
+    private struct PreviewTarget: Identifiable {
+        let id = UUID()
+        let assetIDs: [String]
+        let index: Int
+    }
 
     var body: some View {
         NavigationStack {
@@ -99,6 +109,9 @@ struct ClassificationReviewView: View {
                             Text("共 \(review.items.count) 组 · \(totalCount) 张散图待确认。"
                                  + "只有确认后才会写入系统相簿。")
                                 .font(.footnote)
+                                .foregroundColor(.secondary)
+                            Text("点照片看大图，点右上角圆圈勾选 / 取消，长按照片看图片详情。")
+                                .font(.caption2)
                                 .foregroundColor(.secondary)
                         }
                         ForEach(review.items) { item in
@@ -136,6 +149,56 @@ struct ClassificationReviewView: View {
                 Button("好", role: .cancel) { message = nil }
             } message: {
                 Text(message ?? "")
+            }
+            .fullScreenCover(item: $previewTarget) { target in
+                PhotoViewerView(assetIdentifiers: target.assetIDs, initialIndex: target.index)
+            }
+            .sheet(item: $detailTarget) { target in
+                PhotoDetailView(assetLocalIdentifier: target.id)
+            }
+        }
+    }
+
+    /// 单张缩略图：点图看大图、点右上角圆圈勾选、长按看详情 / 去「照片」搜索
+    private func thumbnail(item: PendingClassification,
+                           assetID: String,
+                           index: Int) -> some View {
+        let selected = review.isSelected(assetID, in: item.personID)
+        return ZStack(alignment: .topTrailing) {
+            AssetThumbnailView(localIdentifier: assetID, contentMode: .fill, side: 64)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    previewTarget = PreviewTarget(assetIDs: item.assetIDs, index: index)
+                }
+
+            Button {
+                review.toggle(assetID, in: item.personID)
+            } label: {
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 16))
+                    .foregroundColor(selected ? .accentColor : .white)
+                    .padding(4)
+                    .background(Circle().fill(.thinMaterial))
+            }
+            .buttonStyle(.plain)
+            .padding(3)
+        }
+        .contextMenu {
+            Button {
+                previewTarget = PreviewTarget(assetIDs: item.assetIDs, index: index)
+            } label: {
+                Label("查看大图", systemImage: "arrow.up.left.and.arrow.down.right")
+            }
+            Button {
+                detailTarget = PhotoDetailTarget(id: assetID)
+            } label: {
+                Label("查看图片详情", systemImage: "info.circle")
+            }
+            Button {
+                PhotoLibraryService.searchSystemPhotos(forAssetLocalIdentifier: assetID)
+            } label: {
+                Label("在「照片」中按日期搜索", systemImage: "photo.on.rectangle.angled")
             }
         }
     }
@@ -177,22 +240,8 @@ struct ClassificationReviewView: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 6) {
-                    ForEach(item.assetIDs, id: \.self) { assetID in
-                        Button {
-                            review.toggle(assetID, in: item.personID)
-                        } label: {
-                            AssetThumbnailView(localIdentifier: assetID, contentMode: .fill, side: 64)
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                                .overlay(alignment: .topTrailing) {
-                                    Image(systemName: review.isSelected(assetID, in: item.personID)
-                                          ? "checkmark.circle.fill" : "circle")
-                                        .font(.system(size: 16))
-                                        .foregroundColor(review.isSelected(assetID, in: item.personID)
-                                                         ? .accentColor : .white)
-                                        .padding(2)
-                                }
-                        }
-                        .buttonStyle(.plain)
+                    ForEach(Array(item.assetIDs.enumerated()), id: \.element) { index, assetID in
+                        thumbnail(item: item, assetID: assetID, index: index)
                     }
                 }
                 .padding(.vertical, 2)
