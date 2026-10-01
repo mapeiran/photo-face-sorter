@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 /// 「归类审核」的状态：待确认提议 + 每组的勾选。
 @MainActor
@@ -25,8 +26,28 @@ final class ClassificationReviewModel: ObservableObject {
         }.value
 
         items = loaded
-        selection = Dictionary(uniqueKeysWithValues: loaded.map { ($0.personID, Set($0.assetIDs)) })
+        // 保留用户已手动取消的勾选；新出现的分组默认全选
+        var merged: [UUID: Set<String>] = [:]
+        for item in loaded {
+            if let existing = selection[item.personID] {
+                merged[item.personID] = existing.intersection(item.assetIDs)
+            } else {
+                merged[item.personID] = Set(item.assetIDs)
+            }
+        }
+        selection = merged
         didLoad = true
+    }
+
+    /// 写入成功后把已归类的照片从待确认列表里去掉；这一组还有剩余就保留。
+    func removeAssets(_ assetIDs: [String], for personID: UUID) {
+        let removing = Set(assetIDs)
+        guard let index = items.firstIndex(where: { $0.personID == personID }) else { return }
+        items[index].assetIDs.removeAll { removing.contains($0) }
+        selection[personID]?.subtract(removing)
+        if items[index].assetIDs.isEmpty {
+            remove(personID)
+        }
     }
 
     func selectedAssetIDs(for item: PendingClassification) -> [String] {
@@ -127,6 +148,10 @@ struct ClassificationReviewView: View {
                 }
             }
             .task { if !review.didLoad { await reload() } }
+            // 有任何照片被写进系统相簿就自动刷新：已归类的照片从待确认里消失
+            .onReceive(NotificationCenter.default.publisher(for: .albumExportDidFinish)) { _ in
+                Task { await reload() }
+            }
             .sheet(isPresented: Binding(get: { pickerPersonID != nil },
                                         set: { if !$0 { pickerPersonID = nil } })) {
                 if let personID = pickerPersonID {
@@ -304,7 +329,8 @@ struct ClassificationReviewView: View {
                                                          albumName: item.targetAlbumName,
                                                          action: action)
             message = result
-            review.remove(item.personID)
+            // 立即把已归类的照片移出待确认；通知触发的 reload 会再做一次权威校正
+            review.removeAssets(assetIDs, for: item.personID)
             busyPersonID = nil
         }
     }

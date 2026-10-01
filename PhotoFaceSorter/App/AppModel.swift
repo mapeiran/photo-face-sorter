@@ -2,6 +2,11 @@ import Foundation
 import Combine
 import SwiftUI
 
+extension Notification.Name {
+    /// 成功把照片写进系统相簿后发出（供「归类审核」自动刷新，把已归类的照片移出待确认）。
+    static let albumExportDidFinish = Notification.Name("PhotoFaceSorter.albumExportDidFinish")
+}
+
 /// 全局数据模型（人物、人脸样本、规则、日志、设置）
 @MainActor
 final class AppModel: ObservableObject {
@@ -344,7 +349,11 @@ final class AppModel: ObservableObject {
             let outcome = try await PersonAlbumExporter.export(albumName: albumName,
                                                                assetIDs: assetIDs,
                                                                action: action)
-            if let log = outcome.log { appendLog(log) }
+            if let log = outcome.log {
+                appendLog(log)
+                // 通知「归类审核」等页面刷新：这些照片已经进相簿，不该再出现在待归类里
+                NotificationCenter.default.post(name: .albumExportDidFinish, object: nil)
+            }
             return outcome.summary
         } catch {
             return "写入系统相簿失败：\(error.localizedDescription)"
