@@ -18,19 +18,15 @@ struct PeopleView: View {
                                            description: Text("先到「扫描」识别人像"))
                 } else {
                     ScrollView {
-                        LazyVGrid(columns: columns, spacing: 12) {
-                            ForEach(model.people) { person in
-                                if editMode {
-                                    Button { toggle(person) } label: { personCell(person) }
-                                        .buttonStyle(.plain)
-                                } else {
-                                    NavigationLink {
-                                        PersonDetailView(personID: person.id)
-                                    } label: {
-                                        personCell(person)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
+                        LazyVStack(alignment: .leading, spacing: 20) {
+                            if !newAlbumPeople.isEmpty {
+                                section("新增相簿", people: newAlbumPeople, showsMarkViewed: true)
+                            }
+                            if !existingAlbumPeople.isEmpty {
+                                section("已有相簿", people: existingAlbumPeople)
+                            }
+                            if !otherPeople.isEmpty {
+                                section("AI 分组（没有相簿）", people: otherPeople)
                             }
                         }
                         .padding()
@@ -66,6 +62,55 @@ struct PeopleView: View {
                     }
                     .padding()
                     .background(.ultraThinMaterial)
+                }
+            }
+        }
+    }
+
+    // MARK: - 分组
+
+    /// 「新增相簿」：由相簿命名、但还没「标记已查看」的人物
+    private var newAlbumPeople: [Person] {
+        let new = model.newAlbumNames
+        return model.people.filter { $0.nameIsAuto == true && new.contains($0.name) }
+    }
+
+    /// 「已有相簿」：相簿命名且已经标记过的人物
+    private var existingAlbumPeople: [Person] {
+        let new = model.newAlbumNames
+        return model.people.filter { $0.nameIsAuto == true && !new.contains($0.name) }
+    }
+
+    /// 其余：AI 聚类出的自动编号人物，以及用户手动命名的人物
+    private var otherPeople: [Person] {
+        model.people.filter { $0.nameIsAuto != true }
+    }
+
+    private func section(_ title: String,
+                         people: [Person],
+                         showsMarkViewed: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("\(title)（\(people.count)）").font(.headline)
+                Spacer()
+                if showsMarkViewed {
+                    Button("标记已查看") { model.markNewAlbumsViewed() }
+                        .font(.footnote)
+                }
+            }
+            LazyVGrid(columns: columns, spacing: 12) {
+                ForEach(people) { person in
+                    if editMode {
+                        Button { toggle(person) } label: { personCell(person) }
+                            .buttonStyle(.plain)
+                    } else {
+                        NavigationLink {
+                            PersonDetailView(personID: person.id)
+                        } label: {
+                            personCell(person)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
         }

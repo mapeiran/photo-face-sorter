@@ -141,7 +141,7 @@ struct PersonDetailView: View {
             }
         }
         .fullScreenCover(item: $previewSample) { sample in
-            PhotoViewerView(localIdentifier: sample.assetLocalIdentifier)
+            PhotoViewerView(sample: sample)
         }
     }
 

@@ -24,6 +24,11 @@ final class AppModel: ObservableObject {
     /// 是否正在进行后台重聚类（用于禁用按钮，避免重复触发）
     @Published private(set) var isReclustering = false
 
+    /// 已经「标记已查看」的相簿名。不在其中的相簿属于人物页的「新增相簿」分组，
+    /// 会一直留在那里，直到用户手动标记（见 `markNewAlbumsViewed`）。
+    @Published private(set) var viewedAlbumNames: Set<String> = []
+    private static let viewedAlbumsKey = "viewedAlbumNames"
+
     /// 自动扫描总开关（默认关闭）
     @AppStorage("autoScanEnabled") var autoScanEnabled: Bool = false
     /// 仅充电时后台扫描
@@ -36,12 +41,13 @@ final class AppModel: ObservableObject {
     @AppStorage(ScanBatchPolicy.defaultsKey) var maxPhotosPerScan: Int = ScanBatchPolicy.unlimited
 
     /// 聚类规则版本。v1 = 旧的 0.5…1.5（默认 0.9），v2 = 新的 0.10…0.35（默认 0.25），
-    /// v3 = 只用自定义相簿命名，v4 = 归类改为「相簿优先、AI 兜底」。
-    /// 版本变旧会在启动时自动重聚一次。
+    /// v3 = 只用自定义相簿命名，v4 = 归类改为「相簿优先、AI 兜底」，
+    /// v5 = 只让「像人名」的自定义相簿参与归类。版本变旧会在启动时自动重聚一次。
     private static let thresholdVersionKey = "clusterThresholdVersion"
-    private static let thresholdVersion = 4
+    private static let thresholdVersion = 5
 
     init() {
+        viewedAlbumNames = Set(UserDefaults.standard.stringArray(forKey: Self.viewedAlbumsKey) ?? [])
         reload()
         loadSamplesAsync()
         // 旧标定会把所有人并成一个分组，迁移时重置阈值并用新阈值重聚一次，
@@ -86,9 +92,15 @@ final class AppModel: ObservableObject {
     // MARK: - 加载
 
     func reload() {
-        people = store.people
+        people = Self.sortedByAlbumName(store.people)
         rules = store.rules.sorted { $0.order < $1.order }
         logs = store.logs.sorted { $0.date > $1.date }
+    }
+
+    /// 人物按名字（相簿名）排序：中文走系统本地化比较，名字里的数字按数值大小
+    /// （「人物 2」排在「人物 10」前面）。
+    private static func sortedByAlbumName(_ list: [Person]) -> [Person] {
+        list.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
     /// 异步加载人脸样本（体积较大，避免主线程阻塞）
@@ -115,6 +127,26 @@ final class AppModel: ObservableObject {
             loadSamplesAsync()
             isReclustering = false
         }
+    }
+
+    // MARK: - 新增相簿
+
+    /// 由相簿规则自动命名的人物名
+    private var albumPersonNames: Set<String> {
+        Set(people.filter { $0.nameIsAuto == true }.map(\.name))
+    }
+
+    /// 还没「标记已查看」的相簿名 —— 人物页的「新增相簿」分组
+    var newAlbumNames: Set<String> {
+        albumPersonNames.subtracting(viewedAlbumNames)
+    }
+
+    /// 把当前所有新增相簿标记为已查看，它们会移到「已有相簿」分组
+    func markNewAlbumsViewed() {
+        let names = newAlbumNames
+        guard !names.isEmpty else { return }
+        viewedAlbumNames.formUnion(names)
+        UserDefaults.standard.set(Array(viewedAlbumNames).sorted(), forKey: Self.viewedAlbumsKey)
     }
 
     // MARK: - 人物
@@ -244,7 +276,7 @@ final class AppModel: ObservableObject {
     private func persistSamples(_ updated: [FaceSample]) {
         samples = updated
         store.samples = updated
-        people = store.people
+        people = Self.sortedByAlbumName(store.people)
     }
 
     // MARK: - 规则

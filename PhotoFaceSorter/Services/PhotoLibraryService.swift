@@ -89,11 +89,13 @@ final class PhotoLibraryService: Sendable {
         return ids
     }
 
-    /// 「人脸照片 -> 所属**自定义**相簿名」，用于按相簿名给人物自动命名。
+    /// 「人脸照片 -> 所属**自定义**相簿名」，用于按相簿名决定人物归属。
     ///
     /// 只收集 `assetIDs`（有人脸的照片）的归属，避免为大相册里没人脸的照片
     /// 白白建立映射。按相簿遍历而不是逐张查询，相册数量远少于照片数量。
-    /// 只认自定义相簿 `fetchCustomAlbums()`：系统生成的相簿不参与命名。
+    /// 只认自定义相簿 `fetchCustomAlbums()`，且名字要**像人名**
+    /// （`PersonNameHeuristic`）—— 系统相簿和「旅行 / 截图」这类相簿都不参与，
+    /// 否则它们会凭空变成一个人物。被过滤掉的照片会退回 AI 聚类。
     /// - Parameter excludingAlbumIDs: 被排除的相簿（它们不参与扫描，名字也不该拿来命名）。
     func albumNames(byAssetLocalIdentifier assetIDs: Set<String>,
                     excludingAlbumIDs: Set<String> = []) -> [String: [String]] {
@@ -101,7 +103,8 @@ final class PhotoLibraryService: Sendable {
         var result: [String: [String]] = [:]
         for album in fetchCustomAlbums() {
             guard !excludingAlbumIDs.contains(album.localIdentifier),
-                  let title = album.localizedTitle, !title.isEmpty else { continue }
+                  let title = album.localizedTitle, !title.isEmpty,
+                  PersonNameHeuristic.looksLikePersonName(title) else { continue }
             PHAsset.fetchAssets(in: album, options: nil).enumerateObjects { asset, _, _ in
                 guard assetIDs.contains(asset.localIdentifier) else { return }
                 result[asset.localIdentifier, default: []].append(title)

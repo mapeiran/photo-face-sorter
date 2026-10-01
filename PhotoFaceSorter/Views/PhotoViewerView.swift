@@ -1,18 +1,21 @@
 import SwiftUI
 import UIKit
 
-/// 全屏看图。
+/// 全屏看图 + 单张调整。
 ///
 /// 缩略图很小，放大后必然糊。点开后这里先给一张中等尺寸预览，
 /// 再替换为**原图**（`PHImageManagerMaximumSize`，iCloud 照片会联网下载），
 /// 并用双指缩放 / 双击放大查看细节。只展示整张照片，不做人脸裁剪。
+/// 右上角菜单可以顺带把这一张「移到其他人物 / 移出人物 / 标记非人物」。
 struct PhotoViewerView: View {
-    let localIdentifier: String
+    let sample: FaceSample
 
+    @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
 
     @State private var image: UIImage?
     @State private var loadingOriginal = true
+    @State private var showMove = false
 
     @State private var scale: CGFloat = 1
     @State private var baseScale: CGFloat = 1
@@ -32,9 +35,37 @@ struct PhotoViewerView: View {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("关闭") { dismiss() }
                 }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Menu {
+                        Button { showMove = true } label: {
+                            Label("移到其他人物…", systemImage: "arrow.triangle.branch")
+                        }
+                        Button {
+                            model.moveSamples([sample], to: nil)
+                            dismiss()
+                        } label: {
+                            Label("移出人物", systemImage: "person.badge.minus")
+                        }
+                        Button(role: .destructive) {
+                            model.ignoreSamples([sample])
+                            dismiss()
+                        } label: {
+                            Label("标记非人物", systemImage: "eye.slash")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                }
             }
         }
-        .task(id: localIdentifier) { await load() }
+        .task(id: sample.assetLocalIdentifier) { await load() }
+        .sheet(isPresented: $showMove) {
+            PersonPickerView(title: "移动到", people: model.people) { target in
+                model.moveSamples([sample], to: target)
+                showMove = false
+                dismiss()
+            }
+        }
     }
 
     @ViewBuilder
@@ -120,6 +151,7 @@ struct PhotoViewerView: View {
     // MARK: - 加载
 
     private func load() async {
+        let localIdentifier = sample.assetLocalIdentifier
         // 1) 先来一张中等尺寸的预览（本地有缓存时几乎瞬时），避免白屏
         if let preview = await ThumbnailCache.shared.preview(localIdentifier: localIdentifier,
                                                              maxSide: 1600) {
