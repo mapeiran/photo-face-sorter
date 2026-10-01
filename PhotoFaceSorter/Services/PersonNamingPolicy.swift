@@ -1,32 +1,33 @@
 import Foundation
 
-/// 用已有相簿名给自动分组命名。
+/// 用相簿名决定人物归属。
 ///
 /// 背景：Vision 的 `VNGenerateImageFeaturePrintRequest` 是通用图像特征而不是身份特征，
-/// 自动聚类只能大致分组（实测同一批照片的最大平方距离只有 0.19）。
-/// 用户往往早已按人把照片放进了相簿（相簿名就是人名），
-/// 于是让相簿名反过来给自动分组命名，比「人物 N」更贴近用户自己的组织方式。
+/// 自动聚类只能大致分组。用户往往早已按人把照片放进了自定义相簿（相簿名就是人名），
+/// 所以归类时**相簿优先**：照片在哪个自定义相簿里，就归到以该相簿命名的人物；
+/// AI 聚类只用来处理没有相簿的照片。
 enum PersonNamingPolicy {
 
-    /// 从该人物所有照片所属的相簿名里，挑出现次数最多的一个。
+    /// 一张照片应该归到哪个人物（由它所属的相簿名决定）。
+    ///
+    /// 照片同时在多个自定义相簿里时，选**最专有**的那个（样本集里成员最少的相簿），
+    /// 避免「全家福 / 旅行」这类大杂烩相簿盖过「妈妈」这种人物相簿；
+    /// 成员数相同则按名称排序取最小，保证结果稳定可复现。
     ///
     /// - Parameters:
-    ///   - assetLocalIdentifiers: 该人物包含的照片；同一张照片上的多张脸只算一次。
-    ///   - albumNamesByAsset: 照片 -> 所属用户相簿名（可能为空数组）。
-    /// - Returns: 出现次数最多的相簿名；完全没有相簿信息时为 nil（保留「人物 N」）。
-    ///   次数相同时按名称排序取最小的一个，保证结果可复现。
-    static func dominantAlbumName(assetLocalIdentifiers: [String],
-                                  albumNamesByAsset: [String: [String]]) -> String? {
-        var counts: [String: Int] = [:]
-        for assetID in Set(assetLocalIdentifiers) {
-            // 同一张照片在多个相簿里的名字各记一次
-            for name in Set(albumNamesByAsset[assetID] ?? []) where !name.isEmpty {
-                counts[name, default: 0] += 1
-            }
+    ///   - assetLocalIdentifier: 照片标识。
+    ///   - albumNamesByAsset: 照片 -> 所属自定义相簿名（可能为空数组）。
+    ///   - albumMemberCounts: 相簿名 -> 它覆盖的照片数。
+    /// - Returns: 相簿名；没有相簿信息时返回 nil（交给 AI 聚类）。
+    static func albumName(assetLocalIdentifier: String,
+                          albumNamesByAsset: [String: [String]],
+                          albumMemberCounts: [String: Int]) -> String? {
+        let names = Set(albumNamesByAsset[assetLocalIdentifier] ?? []).filter { !$0.isEmpty }
+        guard !names.isEmpty else { return nil }
+        return names.min { lhs, rhs in
+            let left = albumMemberCounts[lhs] ?? Int.max
+            let right = albumMemberCounts[rhs] ?? Int.max
+            return left == right ? lhs < rhs : left < right
         }
-        return counts.max { lhs, rhs in
-            // 次数不同取次数多的；次数相同取名称较小的，避免结果随字典顺序变化
-            lhs.value == rhs.value ? lhs.key > rhs.key : lhs.value < rhs.value
-        }?.key
     }
 }

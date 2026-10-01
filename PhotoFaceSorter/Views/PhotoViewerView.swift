@@ -3,29 +3,21 @@ import UIKit
 
 /// 全屏看图。
 ///
-/// 人脸网格里的缩略图只有 80pt，放大后必然糊。点开后这里先给一张中等尺寸预览，
+/// 缩略图很小，放大后必然糊。点开后这里先给一张中等尺寸预览，
 /// 再替换为**原图**（`PHImageManagerMaximumSize`，iCloud 照片会联网下载），
-/// 并用双指缩放 / 双击放大查看细节。带人脸框时还能一键切到「人脸特写」。
+/// 并用双指缩放 / 双击放大查看细节。只展示整张照片，不做人脸裁剪。
 struct PhotoViewerView: View {
     let localIdentifier: String
-    /// 人脸框（Vision 归一化坐标，左下原点）。有值时提供「人脸特写」。
-    var boundingBox: CGRect? = nil
 
     @Environment(\.dismiss) private var dismiss
 
     @State private var image: UIImage?
     @State private var loadingOriginal = true
-    @State private var mode: Mode = .original
 
     @State private var scale: CGFloat = 1
     @State private var baseScale: CGFloat = 1
     @State private var offset: CGSize = .zero
     @State private var baseOffset: CGSize = .zero
-
-    private enum Mode: String, CaseIterable {
-        case original = "原图"
-        case face = "人脸特写"
-    }
 
     var body: some View {
         NavigationStack {
@@ -40,33 +32,16 @@ struct PhotoViewerView: View {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("关闭") { dismiss() }
                 }
-                if boundingBox != nil {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Picker("显示范围", selection: $mode) {
-                            ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                        }
-                        .pickerStyle(.segmented)
-                        .frame(width: 150)
-                    }
-                }
             }
         }
         .task(id: localIdentifier) { await load() }
-        .onChange(of: mode) { _, _ in resetZoom() }
-    }
-
-    /// 「人脸特写」用原图按人脸框裁出来 —— 比缩略图清晰得多
-    private var displayed: UIImage? {
-        guard let image else { return nil }
-        guard mode == .face, let boundingBox else { return image }
-        return ThumbnailCache.cropToFace(image, boundingBox: boundingBox) ?? image
     }
 
     @ViewBuilder
     private var content: some View {
-        if let displayed {
+        if let image {
             GeometryReader { geo in
-                Image(uiImage: displayed)
+                Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(width: geo.size.width, height: geo.size.height)

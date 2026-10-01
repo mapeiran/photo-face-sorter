@@ -141,15 +141,15 @@ struct PersonDetailView: View {
             }
         }
         .fullScreenCover(item: $previewSample) { sample in
-            PhotoViewerView(localIdentifier: sample.assetLocalIdentifier,
-                            boundingBox: sample.boundingBox)
+            PhotoViewerView(localIdentifier: sample.assetLocalIdentifier)
         }
     }
 
     @ViewBuilder
     private func sampleCell(_ sample: FaceSample) -> some View {
+        // 展示整张原图（按比例缩小），不要人脸裁剪图
         let thumb = AssetThumbnailView(localIdentifier: sample.assetLocalIdentifier,
-                                       boundingBox: sample.boundingBox,
+                                       contentMode: .fit,
                                        side: 80)
             .cornerRadius(6)
 

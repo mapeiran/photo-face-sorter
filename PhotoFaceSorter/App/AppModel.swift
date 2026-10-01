@@ -36,9 +36,10 @@ final class AppModel: ObservableObject {
     @AppStorage(ScanBatchPolicy.defaultsKey) var maxPhotosPerScan: Int = ScanBatchPolicy.unlimited
 
     /// 聚类规则版本。v1 = 旧的 0.5…1.5（默认 0.9），v2 = 新的 0.10…0.35（默认 0.25），
-    /// v3 = 只用自定义相簿命名。版本变旧会在启动时自动重聚一次。
+    /// v3 = 只用自定义相簿命名，v4 = 归类改为「相簿优先、AI 兜底」。
+    /// 版本变旧会在启动时自动重聚一次。
     private static let thresholdVersionKey = "clusterThresholdVersion"
-    private static let thresholdVersion = 3
+    private static let thresholdVersion = 4
 
     init() {
         reload()

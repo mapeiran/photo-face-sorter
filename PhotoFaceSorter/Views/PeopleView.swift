@@ -78,8 +78,9 @@ struct PeopleView: View {
             ZStack(alignment: .topTrailing) {
                 Group {
                     if let sample {
+                        // 展示整张原图（按比例缩小），不要人脸裁剪图
                         AssetThumbnailView(localIdentifier: sample.assetLocalIdentifier,
-                                           boundingBox: sample.boundingBox,
+                                           contentMode: .fit,
                                            side: 80)
                     } else {
                         Color(.secondarySystemBackground)
@@ -87,7 +88,7 @@ struct PeopleView: View {
                     }
                 }
                 .frame(width: 80, height: 80)
-                .clipShape(Circle())
+                .clipShape(RoundedRectangle(cornerRadius: 10))
 
                 if editMode {
                     Image(systemName: selected.contains(person.id) ? "checkmark.circle.fill" : "circle")

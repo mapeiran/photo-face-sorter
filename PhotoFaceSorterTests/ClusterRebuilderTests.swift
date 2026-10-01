@@ -182,6 +182,53 @@ final class ClusterRebuilderTests: XCTestCase {
         XCTAssertEqual(store.people.first?.name, "人物 1")
     }
 
+    // MARK: - 相簿优先、AI 兜底
+
+    /// 只要同在同一个自定义相簿，哪怕两张脸完全不像，也必须归到同一个人物
+    func testAlbumMembershipBeatsFaceClustering() {
+        let store = tempStore()
+        store.samples = [FaceSample(assetLocalIdentifier: "a1", boundingBox: .zero, feature: clusterA),
+                         FaceSample(assetLocalIdentifier: "b1", boundingBox: .zero, feature: clusterB)]
+        ClusterRebuilder.rebuild(store: store, threshold: 0.5,
+                                 albumNamesByAsset: ["a1": ["妈妈"], "b1": ["妈妈"]])
+
+        XCTAssertEqual(store.people.map { $0.name }, ["妈妈"], "同一相簿只应产生一个人物")
+        let a1 = store.samples.first { $0.assetLocalIdentifier == "a1" }?.personID
+        let b1 = store.samples.first { $0.assetLocalIdentifier == "b1" }?.personID
+        XCTAssertNotNil(a1)
+        XCTAssertEqual(a1, b1, "相簿优先于人脸相似度")
+    }
+
+    /// 没有相簿的照片交给 AI：和相簿照片聚成一簇就跟着走
+    func testAlbumLessPhotoFollowsTheClusterItBelongsTo() {
+        let store = tempStore()
+        store.samples = [FaceSample(assetLocalIdentifier: "a1", boundingBox: .zero, feature: clusterA),
+                         FaceSample(assetLocalIdentifier: "a2", boundingBox: .zero, feature: clusterA),
+                         FaceSample(assetLocalIdentifier: "b1", boundingBox: .zero, feature: clusterB)]
+        ClusterRebuilder.rebuild(store: store, threshold: 0.5,
+                                 albumNamesByAsset: ["a1": ["妈妈"]])
+
+        let a1 = store.samples.first { $0.assetLocalIdentifier == "a1" }?.personID
+        let a2 = store.samples.first { $0.assetLocalIdentifier == "a2" }?.personID
+        let b1 = store.samples.first { $0.assetLocalIdentifier == "b1" }?.personID
+        XCTAssertEqual(a1, a2, "a2 没有相簿，但和 a1 聚成一簇，应跟着「妈妈」")
+        XCTAssertNotEqual(a1, b1, "b1 是另一簇，应另立人物")
+    }
+
+    /// 没有相簿、也不和任何相簿照片相似的照片，自己成为一个自动编号人物
+    func testUnmatchedPhotoWithoutAlbumGetsAutoName() {
+        let store = tempStore()
+        store.samples = [FaceSample(assetLocalIdentifier: "a1", boundingBox: .zero, feature: clusterA),
+                         FaceSample(assetLocalIdentifier: "b1", boundingBox: .zero, feature: clusterB)]
+        ClusterRebuilder.rebuild(store: store, threshold: 0.5,
+                                 albumNamesByAsset: ["a1": ["妈妈"]])
+
+        let b1 = store.samples.first { $0.assetLocalIdentifier == "b1" }?.personID
+        XCTAssertEqual(store.people.first { $0.id == b1 }?.name, "人物 1")
+        let a1 = store.samples.first { $0.assetLocalIdentifier == "a1" }?.personID
+        XCTAssertNotEqual(a1, b1)
+    }
+
     // MARK: - 回归：自动名字不能通过投票粘住旧分组
 
     /// 上一轮把所有脸错误地并成一个「人物 1」后，重聚类必须能重新分开。
@@ -233,10 +280,10 @@ final class ClusterRebuilderTests: XCTestCase {
 
         ClusterRebuilder.rebuild(store: store, threshold: 0.5, albumNamesByAsset: ["a1": []])
 
-        let rebuilt = store.people.first { $0.id == person.id }
-        XCTAssertNotNil(rebuilt)
-        XCTAssertEqual(rebuilt?.name, "人物 1", "相簿没了应退回自动编号")
-        XCTAssertNil(rebuilt?.nameIsAuto)
+        XCTAssertFalse(store.people.contains { $0.name == "妈妈" }, "相簿没了就不该再有「妈妈」")
+        let sample = store.samples.first { $0.assetLocalIdentifier == "a1" }
+        XCTAssertNotNil(sample?.personID, "照片应退回 AI 分组")
+        XCTAssertEqual(store.people.first { $0.id == sample?.personID }?.name, "人物 1")
     }
 
     /// 相簿改名/换相簿时，自动写进去的名字要跟着变
@@ -251,8 +298,10 @@ final class ClusterRebuilderTests: XCTestCase {
         ClusterRebuilder.rebuild(store: store, threshold: 0.5,
                                  albumNamesByAsset: ["a1": ["新相簿"]])
 
-        XCTAssertEqual(store.people.first { $0.id == person.id }?.name, "新相簿")
-        XCTAssertEqual(store.people.first { $0.id == person.id }?.nameIsAuto, true)
+        XCTAssertEqual(store.people.map { $0.name }, ["新相簿"], "应按新相簿名建人物")
+        XCTAssertEqual(store.people.first?.nameIsAuto, true)
+        XCTAssertEqual(store.samples.first { $0.assetLocalIdentifier == "a1" }?.personID,
+                       store.people.first?.id)
     }
 
     /// 用户亲手起的名字即使相簿消失也不能被改掉
@@ -281,8 +330,8 @@ final class ClusterRebuilderTests: XCTestCase {
                                  albumNamesByAsset: ["a1": []],
                                  previousAlbumNames: ["系统相簿人名"])
 
-        XCTAssertEqual(store.people.first { $0.id == person.id }?.name, "人物 1",
-                       "系统相簿留下的名字应退回自动编号")
+        XCTAssertFalse(store.people.contains { $0.name == "系统相簿人名" }, "系统相簿留下的名字应被清掉")
+        XCTAssertEqual(store.people.map { $0.name }, ["人物 1"])
     }
 
     /// 反过来：用户手写的名字不在任何相簿里，必须原样保留
