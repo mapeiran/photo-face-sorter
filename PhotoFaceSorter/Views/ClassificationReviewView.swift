@@ -87,6 +87,10 @@ struct ClassificationReviewView: View {
     @State private var previewTarget: PreviewTarget?
     /// 长按 -> 图片详情
     @State private var detailTarget: PhotoDetailTarget?
+    /// 长按 -> 网络识别人像（以图搜图）
+    @State private var visualSearchTarget: VisualSearchTarget?
+    /// 点目标相簿名 -> 进入该相簿看内容
+    @State private var openAlbumTitle: String?
 
     private struct PreviewTarget: Identifiable {
         let id = UUID()
@@ -130,6 +134,9 @@ struct ClassificationReviewView: View {
                 }
             }
             .task { if !review.didLoad { await reload() } }
+            .navigationDestination(item: $openAlbumTitle) { title in
+                AlbumDetailView(albumTitle: title)
+            }
             .sheet(isPresented: Binding(get: { pickerPersonID != nil },
                                         set: { if !$0 { pickerPersonID = nil } })) {
                 if let personID = pickerPersonID {
@@ -155,6 +162,9 @@ struct ClassificationReviewView: View {
             }
             .sheet(item: $detailTarget) { target in
                 PhotoDetailView(assetLocalIdentifier: target.id)
+            }
+            .sheet(item: $visualSearchTarget) { target in
+                VisualSearchView(assetLocalIdentifier: target.id)
             }
         }
     }
@@ -200,6 +210,11 @@ struct ClassificationReviewView: View {
             } label: {
                 Label("在「照片」中按日期搜索", systemImage: "photo.on.rectangle.angled")
             }
+            Button {
+                visualSearchTarget = VisualSearchTarget(id: assetID)
+            } label: {
+                Label("网络识别人像（以图搜图）", systemImage: "globe")
+            }
         }
     }
 
@@ -232,7 +247,26 @@ struct ClassificationReviewView: View {
             }
 
             HStack {
-                Text("目标相簿：\(item.targetAlbumName)").font(.subheadline)
+                // 已有相簿：点名字就能进去看里面的内容
+                Button {
+                    if item.albumExists { openAlbumTitle = item.targetAlbumName }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("目标相簿：\(item.targetAlbumName)").font(.subheadline)
+                        if item.albumExists {
+                            Image(systemName: "chevron.right")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        } else {
+                            Text("（确认后创建）")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .foregroundColor(item.albumExists ? .accentColor : .primary)
+                }
+                .buttonStyle(.plain)
+                .disabled(!item.albumExists)
                 Spacer()
                 Button("更改") { pickerPersonID = item.personID }
                     .font(.caption)

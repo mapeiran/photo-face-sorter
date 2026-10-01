@@ -32,6 +32,8 @@ struct PersonDetailView: View {
     @State private var albumMessage: String?
     /// 单张照片 -> 移到系统相簿
     @State private var albumPickAssetID: String?
+    /// 单张照片 -> 网络识别人像（以图搜图）
+    @State private var visualSearchTarget: VisualSearchTarget?
 
     /// 看图页的入口数据：整组样本 + 起始位置
     private struct PhotoPreview: Identifiable {
@@ -190,6 +192,9 @@ struct PersonDetailView: View {
                 if let id = albumPickAssetID { moveToAlbum(id: id, albumName: albumName) }
             }
         }
+        .sheet(item: $visualSearchTarget) { target in
+            VisualSearchView(assetLocalIdentifier: target.id)
+        }
         .confirmationDialog("移动到系统相簿？",
                             isPresented: $showAlbumMoveConfirm,
                             titleVisibility: .visible) {
@@ -253,6 +258,11 @@ struct PersonDetailView: View {
                     albumPickAssetID = sample.assetLocalIdentifier
                 } label: {
                     Label("移到系统相簿…", systemImage: "rectangle.stack.badge.minus")
+                }
+                Button {
+                    visualSearchTarget = VisualSearchTarget(id: sample.assetLocalIdentifier)
+                } label: {
+                    Label("网络识别人像（以图搜图）", systemImage: "globe")
                 }
                 Divider()
                 Button {

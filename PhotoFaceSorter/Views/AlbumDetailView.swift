@@ -18,6 +18,8 @@ struct AlbumDetailView: View {
     /// 单张照片 -> 移到系统相簿
     @State private var albumPickAssetID: String?
     @State private var albumMessage: String?
+    /// 单张照片 -> 网络识别人像（以图搜图）
+    @State private var visualSearchTarget: VisualSearchTarget?
 
     private struct Preview: Identifiable {
         let id = UUID()
@@ -71,6 +73,11 @@ struct AlbumDetailView: View {
                                 } label: {
                                     Label("移到系统相簿…", systemImage: "rectangle.stack.badge.minus")
                                 }
+                                Button {
+                                    visualSearchTarget = VisualSearchTarget(id: identifiers[index])
+                                } label: {
+                                    Label("网络识别人像（以图搜图）", systemImage: "globe")
+                                }
                             }
                         }
                     }
@@ -115,6 +122,9 @@ struct AlbumDetailView: View {
             AlbumPickerView(title: "移到系统相簿") { albumName in
                 if let id = albumPickAssetID { moveToAlbum(id: id, albumName: albumName) }
             }
+        }
+        .sheet(item: $visualSearchTarget) { target in
+            VisualSearchView(assetLocalIdentifier: target.id)
         }
         .alert("完成",
                isPresented: Binding(get: { albumMessage != nil },
