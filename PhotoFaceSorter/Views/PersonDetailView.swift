@@ -281,7 +281,7 @@ struct PersonDetailView: View {
         }
         isExportingToAlbum = true
         Task {
-            albumMessage = await model.exportPersonToAlbum(person, action: action)
+            albumMessage = (await model.exportPersonToAlbum(person, action: action)).message
             isExportingToAlbum = false
         }
     }
@@ -289,7 +289,7 @@ struct PersonDetailView: View {
     /// 把单张照片移到选定的系统相簿
     private func moveToAlbum(id: String, albumName: String) {
         Task {
-            albumMessage = await model.moveAssetsToAlbum([id], albumName: albumName)
+            albumMessage = (await model.moveAssetsToAlbum([id], albumName: albumName)).message
         }
     }
 }

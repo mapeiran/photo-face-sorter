@@ -7,6 +7,12 @@ extension Notification.Name {
     static let albumExportDidFinish = Notification.Name("PhotoFaceSorter.albumExportDidFinish")
 }
 
+/// 写入系统相簿的结果：是否成功 + 给用户看的文案。
+struct AlbumExportOutcome: Sendable {
+    var message: String
+    var succeeded: Bool
+}
+
 /// 全局数据模型（人物、人脸样本、规则、日志、设置）
 @MainActor
 final class AppModel: ObservableObject {
@@ -339,12 +345,14 @@ final class AppModel: ObservableObject {
         persistSamples(list)
     }
 
-    /// 把若干张照片写入系统相簿（复制 / 移动），返回给用户看的总结。
+    /// 把若干张照片写入系统相簿（复制 / 移动）。
     /// 复用规则引擎，成功时会把一条执行日志计进日志列表（可回退）。
     func exportAssetsToAlbum(_ assetIDs: [String],
                              albumName: String,
-                             action: RuleAction) async -> String {
-        guard !assetIDs.isEmpty else { return "没有可操作的照片。" }
+                             action: RuleAction) async -> AlbumExportOutcome {
+        guard !assetIDs.isEmpty else {
+            return AlbumExportOutcome(message: "没有可操作的照片。", succeeded: false)
+        }
         do {
             let outcome = try await PersonAlbumExporter.export(albumName: albumName,
                                                                assetIDs: assetIDs,
@@ -354,27 +362,32 @@ final class AppModel: ObservableObject {
                 // 通知「归类审核」等页面刷新：这些照片已经进相簿，不该再出现在待归类里
                 NotificationCenter.default.post(name: .albumExportDidFinish, object: nil)
             }
-            return outcome.summary
+            return AlbumExportOutcome(message: outcome.summary, succeeded: true)
         } catch {
-            return "写入系统相簿失败：\(error.localizedDescription)"
+            return AlbumExportOutcome(message: "写入系统相簿失败：\(error.localizedDescription)",
+                                      succeeded: false)
         }
     }
 
     /// 把某个人物的照片写入系统相簿（复制 / 移动）。
-    func exportPersonToAlbum(_ person: Person, action: RuleAction) async -> String {
+    func exportPersonToAlbum(_ person: Person, action: RuleAction) async -> AlbumExportOutcome {
         var seen = Set<String>()
         var assetIDs: [String] = []
         for sample in samples(of: person) where seen.insert(sample.assetLocalIdentifier).inserted {
             assetIDs.append(sample.assetLocalIdentifier)
         }
-        guard !assetIDs.isEmpty else { return "该人物还没有照片。" }
+        guard !assetIDs.isEmpty else {
+            return AlbumExportOutcome(message: "该人物还没有照片。", succeeded: false)
+        }
         return await exportAssetsToAlbum(assetIDs, albumName: person.displayName, action: action)
     }
 
     /// 把单张（或几张）照片**移动**到指定系统相簿。
     /// 会从其它相簿移除（原图不删除），并记一条执行日志（可回退）。
-    func moveAssetsToAlbum(_ assetIDs: [String], albumName: String) async -> String {
-        guard !assetIDs.isEmpty else { return "没有可移动的照片。" }
+    func moveAssetsToAlbum(_ assetIDs: [String], albumName: String) async -> AlbumExportOutcome {
+        guard !assetIDs.isEmpty else {
+            return AlbumExportOutcome(message: "没有可移动的照片。", succeeded: false)
+        }
         return await exportAssetsToAlbum(assetIDs, albumName: albumName, action: .move)
     }
 

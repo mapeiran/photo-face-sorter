@@ -328,7 +328,7 @@ struct ClassificationReviewView: View {
             let result = await model.exportAssetsToAlbum(assetIDs,
                                                          albumName: item.targetAlbumName,
                                                          action: action)
-            message = result
+            message = result.message
             // 立即把已归类的照片移出待确认；通知触发的 reload 会再做一次权威校正
             review.removeAssets(assetIDs, for: item.personID)
             busyPersonID = nil
@@ -471,7 +471,7 @@ struct ProposalPhotosView: View {
             let result = await model.exportAssetsToAlbum(ids, albumName: albumName, action: action)
             review.removeAssets(ids, for: personID)
             busy = false
-            message = result
+            message = result.message
         }
     }
 

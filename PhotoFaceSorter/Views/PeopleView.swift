@@ -110,7 +110,7 @@ struct PeopleView: View {
     private func exportPerson(_ person: Person, action: RuleAction) {
         albumMovePerson = nil
         Task {
-            albumMessage = await model.exportPersonToAlbum(person, action: action)
+            albumMessage = (await model.exportPersonToAlbum(person, action: action)).message
         }
     }
 

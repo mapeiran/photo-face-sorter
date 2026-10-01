@@ -27,7 +27,8 @@ struct PhotoViewerView: View {
     @State private var showMove = false
     @State private var showDetail = false
     @State private var showAlbumPicker = false
-    @State private var albumMessage: String?
+    /// 移动成功后的短暂提示
+    @State private var toast: String?
 
     @State private var index: Int
     @State private var scale: CGFloat = 1
@@ -77,6 +78,17 @@ struct PhotoViewerView: View {
             ZStack {
                 Color.black.ignoresSafeArea()
                 content
+                if let toast {
+                    Text(toast)
+                        .font(.footnote)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .padding(.top, 12)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                        .transition(.opacity)
+                }
             }
             .navigationTitle(count > 1 ? "\(index + 1) / \(count)" : "查看")
             .navigationBarTitleDisplayMode(.inline)
@@ -154,20 +166,34 @@ struct PhotoViewerView: View {
                 moveCurrent(to: albumName)
             }
         }
-        .alert("完成",
-               isPresented: Binding(get: { albumMessage != nil },
-                                    set: { if !$0 { albumMessage = nil } })) {
-            Button("好", role: .cancel) { albumMessage = nil }
-        } message: {
-            Text(albumMessage ?? "")
+    }
+
+    /// 把当前这张照片移到选定的系统相簿；成功后自动定位到下一张，最后一张则退出查看。
+    private func moveCurrent(to albumName: String) {
+        guard let currentIdentifier else { return }
+        let movedIndex = index
+        Task {
+            let outcome = await model.moveAssetsToAlbum([currentIdentifier], albumName: albumName)
+            showToast(outcome.message)
+            guard outcome.succeeded else { return }
+            advance(afterMoving: movedIndex)
         }
     }
 
-    /// 把当前这张照片移到选定的系统相簿
-    private func moveCurrent(to albumName: String) {
-        guard let currentIdentifier else { return }
+    /// 移动后前进到下一张；已经是最后一张就关闭查看页、返回上一页。
+    private func advance(afterMoving movedIndex: Int) {
+        if movedIndex >= count - 1 {
+            dismiss()
+        } else {
+            go(to: movedIndex + 1)
+        }
+    }
+
+    private func showToast(_ text: String) {
+        toast = text
         Task {
-            albumMessage = await model.moveAssetsToAlbum([currentIdentifier], albumName: albumName)
+            try? await Task.sleep(nanoseconds: 1_800_000_000)
+            if toast == text { toast = nil }
         }
     }
 
