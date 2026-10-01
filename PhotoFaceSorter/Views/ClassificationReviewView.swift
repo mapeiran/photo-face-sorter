@@ -355,7 +355,13 @@ struct ProposalPhotosView: View {
     let personID: UUID
 
     @EnvironmentObject private var review: ClassificationReviewModel
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+
     @State private var preview: Preview?
+    @State private var busy = false
+    @State private var message: String?
+    @State private var showMoveConfirm = false
 
     private struct Preview: Identifiable {
         let id = UUID()
@@ -396,8 +402,76 @@ struct ProposalPhotosView: View {
                 }
             }
         }
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 8) {
+                Text("已选 \(selectedCount)/\(assetIDs.count) 张 · 选择要执行的操作")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                HStack(spacing: 12) {
+                    Button {
+                        run(.copy)
+                    } label: {
+                        Label("复制加入", systemImage: "rectangle.stack.badge.plus")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(selectedCount == 0 || busy)
+
+                    Button {
+                        showMoveConfirm = true
+                    } label: {
+                        Label("移动加入", systemImage: "rectangle.stack.badge.minus")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(selectedCount == 0 || busy)
+
+                    Spacer()
+
+                    Button("跳过") {
+                        review.remove(personID)
+                        dismiss()
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(busy)
+                }
+                .font(.footnote)
+            }
+            .padding()
+            .background(.ultraThinMaterial)
+        }
+        .confirmationDialog("移动加入？", isPresented: $showMoveConfirm, titleVisibility: .visible) {
+            Button("移动", role: .destructive) { run(.move) }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("会把选中的照片加入相簿「\(albumName)」，并从其它相簿移除（原图不会删除），"
+                 + "可从执行日志回退。")
+        }
+        .alert("完成",
+               isPresented: Binding(get: { message != nil },
+                                    set: { if !$0 { message = nil } })) {
+            Button("好", role: .cancel) {
+                message = nil
+                dismiss()
+            }
+        } message: {
+            Text(message ?? "")
+        }
         .fullScreenCover(item: $preview) { preview in
             PhotoViewerView(assetIdentifiers: assetIDs, initialIndex: preview.index)
+        }
+    }
+
+    /// 对当前勾选的照片执行「复制加入 / 移动加入」
+    private func run(_ action: RuleAction) {
+        let ids = assetIDs.filter { review.isSelected($0, in: personID) }
+        guard !ids.isEmpty else { return }
+        busy = true
+        Task {
+            let result = await model.exportAssetsToAlbum(ids, albumName: albumName, action: action)
+            review.removeAssets(ids, for: personID)
+            busy = false
+            message = result
         }
     }
 
