@@ -166,6 +166,15 @@ PhotoFaceSorterTests/   逻辑层单元测试
   与「在系统相册中打开」。注意：iOS **没有公开接口**能直接定位到某一张具体照片，
   后者用社区通用的 `photos-redirect://` 打开「照片」App，由用户自己找到那张；
   系统若不再支持该 scheme 会静默失败（`PhotoLibraryService.openSystemPhotosApp()`）。
+
+- **重复图片（只列不删）**：设置 → 重复图片（`DuplicateFinderView`）用感知哈希 dHash
+  （`PerceptualHash`：9×8 灰度差分 64 位）扫描照片库，按汉明距离 ≤
+  `DuplicateDetector.hammingThreshold`（6）用「代表元」分组
+  （`DuplicateGroupingPolicy`，不做链式传递，避免 A≈B、B≈C 把一大批照片连成一组），
+  找出视觉重复（重复导入、连拍、缩放/压缩后的同一张）。结果按可省空间排序，每组显示
+  缩略图、尺寸与原始字节数。**只列出，不删除任何照片**；iCloud 未下载的
+  （`isNetworkAccessAllowed = false`）会跳过并计数。局限：只看亮度梯度不看颜色，
+  且对大幅裁剪不敏感 —— 少量误报由用户自己判断。
 - **人物展示用整张原图**：人物页的封面与照片网格都按比例显示**整张原图**
   （`contentMode: .fit`、圆角矩形），不再显示人脸裁剪图/特写。
   点开由 `PhotoViewerView` 先给一张 1600px 预览、再替换为**原图**

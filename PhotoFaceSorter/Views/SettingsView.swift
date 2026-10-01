@@ -80,6 +80,17 @@ struct SettingsView: View {
                     }
                 }
 
+                Section("照片整理") {
+                    NavigationLink {
+                        DuplicateFinderView()
+                    } label: {
+                        Label("重复图片", systemImage: "square.on.square")
+                    }
+                    Text("按感知哈希找出视觉重复的照片，只列出分组与可省空间，不会删除照片。")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                }
+
                 Section("权限") {
                     Button("打开系统设置") {
                         if let url = URL(string: UIApplication.openSettingsURLString) {
