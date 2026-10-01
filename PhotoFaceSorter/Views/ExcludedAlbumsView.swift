@@ -39,7 +39,11 @@ struct ExcludedAlbumsView: View {
             }
         }
         .navigationTitle("排除相簿")
-        .onAppear { albums = PhotoLibraryService().fetchUserAlbums() }
+        .onAppear {
+            albums = PhotoLibraryService().fetchUserAlbums().sorted {
+                AlbumTitleOrdering.isOrderedBefore($0.localizedTitle, $1.localizedTitle)
+            }
+        }
     }
 
     private func isExcluded(_ album: PHAssetCollection) -> Bool {

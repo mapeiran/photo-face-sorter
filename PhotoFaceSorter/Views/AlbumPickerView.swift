@@ -51,7 +51,12 @@ struct AlbumPickerView: View {
                     Button("取消") { dismiss() }
                 }
             }
-            .onAppear { albums = PhotoLibraryService().fetchUserAlbums() }
+            .onAppear {
+                // 系统相簿按名称排序（中文按本地化顺序、名字里的数字按数值）
+                albums = PhotoLibraryService().fetchUserAlbums().sorted {
+                    AlbumTitleOrdering.isOrderedBefore($0.localizedTitle, $1.localizedTitle)
+                }
+            }
         }
     }
 
