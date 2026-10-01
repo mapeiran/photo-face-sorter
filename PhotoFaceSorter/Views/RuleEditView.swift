@@ -1,4 +1,5 @@
 import SwiftUI
+import Photos
 
 struct RuleEditView: View {
     @EnvironmentObject var model: AppModel
@@ -7,6 +8,7 @@ struct RuleEditView: View {
     @State var rule: ClassifyRule
     @State private var testCount: Int?
     @State private var message: String?
+    @State private var albums: [PHAssetCollection] = []
 
     var body: some View {
         NavigationStack {
@@ -21,6 +23,17 @@ struct RuleEditView: View {
                         ForEach(RuleMatchMode.allCases) { Text($0.rawValue).tag($0) }
                     }
                     Stepper("人脸数量 ≥ \(rule.minFaceCount)", value: $rule.minFaceCount, in: 1...10)
+                }
+
+                Section {
+                    Picker("限定来源相簿", selection: $rule.sourceAlbumLocalID) {
+                        Text("不限（全部照片）").tag(String?.none)
+                        ForEach(albums, id: \.localIdentifier) { album in
+                            Text(album.localizedTitle ?? "未命名").tag(String?.some(album.localIdentifier))
+                        }
+                    }
+                } footer: {
+                    Text("仅对来自该相簿的照片生效。留「不限」则扫描范围内的照片都会参与匹配。")
                 }
 
                 Section("包含人物（可多选）") {
@@ -48,10 +61,21 @@ struct RuleEditView: View {
                         ForEach(RuleAction.allCases) { Text($0.rawValue).tag($0) }
                     }
                     TextField("目标相簿名称", text: $rule.targetAlbumName)
+                    if !albums.isEmpty {
+                        Menu {
+                            ForEach(albums, id: \.localIdentifier) { album in
+                                Button(album.localizedTitle ?? "未命名") {
+                                    rule.targetAlbumName = album.localizedTitle ?? ""
+                                }
+                            }
+                        } label: {
+                            Label("选择已有相簿", systemImage: "photo.on.rectangle")
+                        }
+                    }
                     if rule.action.isRisky {
-                        Text("「移动」会从原相簿移除照片，操作不可逆，请谨慎。")
+                        Text("「移动」会把照片从其它相簿移出（原图不会被删除），之后可从执行日志回退。")
                             .font(.footnote)
-                            .foregroundColor(.red)
+                            .foregroundColor(.orange)
                     }
                 }
 
@@ -64,6 +88,9 @@ struct RuleEditView: View {
             }
             .navigationTitle("编辑规则")
             .navigationBarTitleDisplayMode(.inline)
+            .task {
+                albums = PhotoLibraryService.shared.fetchUserAlbums()
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") { dismiss() }
@@ -95,9 +122,12 @@ struct RuleEditView: View {
     }
 
     private func testRule() {
-        let ids = RuleEngine().matchedAssetIDs(for: rule,
-                                               samples: model.samples,
-                                               records: model.store.records)
+        // 与真正执行时使用同一套来源相簿过滤，避免预览与实际结果不一致
+        let engine = RuleEngine()
+        let ids = engine.matchedAssetIDs(for: rule,
+                                         samples: model.samples,
+                                         records: model.store.records,
+                                         albumMembership: engine.photoKitAlbumMembership())
         testCount = ids.count
     }
 }

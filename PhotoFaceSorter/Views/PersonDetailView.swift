@@ -4,7 +4,12 @@ struct PersonDetailView: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
 
-    @State var person: Person
+    /// 只持有 id，人物本身每次渲染都从 model 取。
+    ///
+    /// 之前是把 `Person` 值本身放进 `@State`，那是一个**快照**：
+    /// 重命名、合并、或重聚类改动之后，这个页面会继续显示并操作过期数据
+    /// （例如把过期副本再拿去调用 `model.renamePerson` / `mergePerson`）。
+    let personID: UUID
 
     private enum AlertKind { case rename, split }
     @State private var alertKind: AlertKind?
@@ -16,11 +21,26 @@ struct PersonDetailView: View {
 
     @State private var selectMode = false
     @State private var selected: Set<UUID> = []
+    /// 点击缩略图后全屏查看原图
+    @State private var previewSample: FaceSample?
 
-    private var samples: [FaceSample] { model.samples(of: person) }
+    private var person: Person? { model.people.first { $0.id == personID } }
+    private var samples: [FaceSample] { person.map { model.samples(of: $0) } ?? [] }
     private var selectedSamples: [FaceSample] { samples.filter { selected.contains($0.id) } }
 
     var body: some View {
+        Group {
+            if let person {
+                detail(for: person)
+            } else {
+                // 人物已被删除或合并（例如最后一个样本人脸被移走），自动退回列表。
+                // 用 onAppear 而不是 task：dismiss() 不必跨并发边界。
+                Color.clear.onAppear { dismiss() }
+            }
+        }
+    }
+
+    private func detail(for person: Person) -> some View {
         List {
             Section("名称") {
                 HStack {
@@ -35,7 +55,7 @@ struct PersonDetailView: View {
 
             Section {
                 Toggle("选择模式（批量调整）", isOn: $selectMode)
-                    .onChange(of: selectMode) { if !$0 { selected.removeAll() } }
+                    .onChange(of: selectMode) { _, newValue in if !newValue { selected.removeAll() } }
             }
 
             Section("照片（\(samples.count)）") {
@@ -80,7 +100,6 @@ struct PersonDetailView: View {
                     Button("标记非人物", role: .destructive) {
                         model.ignoreSamples(selectedSamples)
                         clearSelection()
-                        ensurePersonExists()
                     }
                 }
                 .font(.subheadline)
@@ -95,8 +114,8 @@ struct PersonDetailView: View {
                 TextField("名称", text: $newName)
                 Button("取消", role: .cancel) { alertKind = nil }
                 Button("保存") {
+                    // 只改 model；页面显示的 name 会自动跟着更新，不需要再手动改本地副本
                     model.renamePerson(person, to: newName)
-                    person.name = newName
                     alertKind = nil
                 }
             } else {
@@ -121,6 +140,10 @@ struct PersonDetailView: View {
                 clearSelection()
             }
         }
+        .fullScreenCover(item: $previewSample) { sample in
+            PhotoViewerView(localIdentifier: sample.assetLocalIdentifier,
+                            boundingBox: sample.boundingBox)
+        }
     }
 
     @ViewBuilder
@@ -143,16 +166,21 @@ struct PersonDetailView: View {
             }
             .buttonStyle(.plain)
         } else {
-            thumb.contextMenu {
+            // 缩略图只有 80pt，点开看原图/更清晰的画面
+            Button {
+                previewSample = sample
+            } label: {
+                thumb
+            }
+            .buttonStyle(.plain)
+            .contextMenu {
                 Button {
                     model.moveSamples([sample], to: nil)
-                    ensurePersonExists()
                 } label: {
                     Label("移出人物", systemImage: "person.badge.minus")
                 }
                 Button(role: .destructive) {
                     model.ignoreSamples([sample])
-                    ensurePersonExists()
                 } label: {
                     Label("标记非人物", systemImage: "eye.slash")
                 }
@@ -163,11 +191,5 @@ struct PersonDetailView: View {
     private func clearSelection() {
         selected.removeAll()
         selectMode = false
-    }
-
-    private func ensurePersonExists() {
-        if !model.people.contains(where: { $0.id == person.id }) {
-            dismiss()
-        }
     }
 }

@@ -1,0 +1,15 @@
+# SwiftFormat 配置
+# 运行：swiftformat PhotoFaceSorter PhotoFaceSorterTests
+
+--swiftversion 5.9
+--indent 4
+--indentcase false
+--maxwidth 140
+--wraparguments before-first
+--wrapparameters before-first
+--stripunusedargs closure-only
+--self remove
+--importgrouping testable-bottom
+
+# 生成的文件不参与格式化
+--exclude build,.build

@@ -39,8 +39,8 @@
 	<string>用于将照片复制或移动到人物相簿。</string>
 	<key>UIBackgroundModes</key>
 	<array>
+		<!-- 只使用 BGAppRefreshTask；未实现 BGProcessingTask，故不声明 processing -->
 		<string>fetch</string>
-		<string>processing</string>
 	</array>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>

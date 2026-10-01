@@ -27,7 +27,8 @@ struct RulesView: View {
                                         .font(.caption)
                                         .foregroundColor(rule.enabled ? .green : .secondary)
                                 }
-                                Text("\(rule.action.rawValue) → 「\(rule.targetAlbumName)」")
+                                Text("\(rule.action.rawValue) → 「\(rule.targetAlbumName)」"
+                                     + (rule.sourceAlbumLocalID == nil ? "" : " · 限定来源相簿"))
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
@@ -39,6 +40,9 @@ struct RulesView: View {
                             } label: { Label("删除", systemImage: "trash") }
                         }
                     }
+                    .onMove { source, destination in
+                        model.moveRules(from: source, to: destination)
+                    }
                 }
             }
             .navigationTitle("规则")
@@ -47,6 +51,11 @@ struct RulesView: View {
                     NavigationLink { ExecutionLogView() } label: {
                         Image(systemName: "list.bullet.rectangle")
                     }
+                }
+                ToolbarItem(placement: .navigationBarLeading) {
+                    // 进入编辑态后即可拖动排序
+                    EditButton()
+                        .disabled(model.rules.count < 2)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     HStack(spacing: 16) {
@@ -75,7 +84,7 @@ struct RulesView: View {
             } message: {
                 let moveCount = model.rules.filter { $0.enabled && $0.action == .move }.count
                 Text(moveCount > 0
-                     ? "预计匹配 \(previewCount) 张；含 \(moveCount) 条「移动」规则（不可逆）。"
+                     ? "预计匹配 \(previewCount) 张；含 \(moveCount) 条「移动」规则：照片会被移出其它相簿（原图不会被删除），可从执行日志回退。"
                      : "预计匹配 \(previewCount) 张，将复制到对应相簿。")
             }
             .alert("完成", isPresented: Binding(
@@ -99,11 +108,10 @@ struct RulesView: View {
         Task {
             let outcome = await RuleRunner().runAll(rules: model.rules,
                                                     samples: model.samples,
-                                                    records: model.store.records,
-                                                    store: model.store)
+                                                    records: model.store.records)
             await MainActor.run {
                 outcome.logs.forEach { model.appendLog($0) }
-                runMessage = "已执行 \(outcome.logs.count) 条规则：复制 \(outcome.copiedCount) 张，移动 \(outcome.movedCount) 张"
+                runMessage = outcome.summary
             }
         }
     }

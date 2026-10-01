@@ -4,6 +4,7 @@ import UIKit
 struct SettingsView: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var autoScan: AutoScanManager
+    @EnvironmentObject var coordinator: ScanCoordinator
 
     var body: some View {
         NavigationStack {
@@ -16,7 +17,7 @@ struct SettingsView: View {
 
                 Section("自动扫描") {
                     Toggle("启用增量自动扫描", isOn: $model.autoScanEnabled)
-                        .onChange(of: model.autoScanEnabled) { autoScan.setEnabled($0) }
+                        .onChange(of: model.autoScanEnabled) { _, newValue in autoScan.setEnabled(newValue) }
                     Toggle("仅充电时后台扫描", isOn: $model.chargeOnlyBackground)
                         .disabled(!model.autoScanEnabled)
                     if let date = autoScan.lastRunDate {
@@ -38,12 +39,22 @@ struct SettingsView: View {
                             Text(String(format: "%.2f", model.clusterThreshold))
                                 .foregroundColor(.secondary)
                         }
-                        Slider(value: $model.clusterThreshold, in: 0.5...1.5, step: 0.05)
-                        Text("越小分组越细（同一人易被拆开）；越大越粗（不同人易被合并）。")
+                        Slider(value: $model.clusterThreshold,
+                               in: ClusterThreshold.range,
+                               step: ClusterThreshold.step)
+                        Text("越小分组越细（同一人易被拆开）；越大越粗（不同人易被合并）。"
+                             + "自动分组会优先用照片所在相簿的名字命名。")
                             .font(.footnote)
                             .foregroundColor(.secondary)
                     }
-                    Button("按新阈值重新聚类") { model.recluster() }
+                    Button(model.isReclustering ? "正在重新聚类…" : "按新阈值重新聚类") { model.recluster() }
+                        // 扫描进行中不能重聚类：两者都会读改写 store.samples，会互相覆盖
+                        .disabled(model.isReclustering || coordinator.state == .scanning)
+                    if coordinator.state == .scanning {
+                        Text("扫描进行中，结束后才能重新聚类。")
+                            .font(.footnote)
+                            .foregroundColor(.secondary)
+                    }
                 }
 
                 Section("缓存管理") {
@@ -52,6 +63,16 @@ struct SettingsView: View {
                 }
 
                 Section("扫描范围") {
+                    Picker("单次扫描上限", selection: $model.maxPhotosPerScan) {
+                        Text("不限制").tag(0)
+                        Text("100 张").tag(100)
+                        Text("200 张").tag(200)
+                        Text("500 张").tag(500)
+                        Text("1000 张").tag(1000)
+                    }
+                    Text("每次扫描最多处理这么多张，扫完一批就结束（进度已保存），可再次点「开始扫描」继续。相册很大时设个上限，避免长时间占用设备。")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
                     NavigationLink {
                         ExcludedAlbumsView()
                     } label: {

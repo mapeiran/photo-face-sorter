@@ -14,3 +14,12 @@ PhotoFaceSorter.xcodeproj/project.xcworkspace/xcuserdata/
 PhotoFaceSorter.xcodeproj/xcuserdata/
 *.ipa
 *.dSYM.zip
+
+# Swift Package Manager
+.swiftpm/
+.build/
+
+# 测试与覆盖率产物
+*.xcresult
+*.xccovreport
+*.xccovarchive

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct PeopleView: View {
     @EnvironmentObject var model: AppModel
+    @EnvironmentObject var coordinator: ScanCoordinator
 
     @State private var editMode = false
     @State private var selected: Set<UUID> = []
@@ -24,7 +25,7 @@ struct PeopleView: View {
                                         .buttonStyle(.plain)
                                 } else {
                                     NavigationLink {
-                                        PersonDetailView(person: person)
+                                        PersonDetailView(personID: person.id)
                                     } label: {
                                         personCell(person)
                                     }
@@ -44,7 +45,8 @@ struct PeopleView: View {
                     } label: {
                         Image(systemName: "arrow.triangle.2.circlepath")
                     }
-                    .disabled(model.samples.isEmpty)
+                    // 扫描进行中不能重聚类：两者都会读改写 store.samples，会互相覆盖
+                    .disabled(model.samples.isEmpty || model.isReclustering || coordinator.state == .scanning)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(editMode ? "完成" : "选择") {
@@ -70,7 +72,8 @@ struct PeopleView: View {
     }
 
     private func personCell(_ person: Person) -> some View {
-        let sample = model.samples(of: person).first
+        let personSamples = model.samples(of: person)
+        let sample = personSamples.first
         return VStack(spacing: 6) {
             ZStack(alignment: .topTrailing) {
                 Group {
@@ -96,7 +99,7 @@ struct PeopleView: View {
             }
 
             Text(person.displayName).font(.caption).lineLimit(1)
-            Text("\(model.samples(of: person).count) 张")
+            Text("\(personSamples.count) 张")
                 .font(.caption2)
                 .foregroundColor(.secondary)
         }

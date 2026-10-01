@@ -1,0 +1,63 @@
+# SwiftLint 配置
+# 运行：swiftlint lint --strict
+
+included:
+  - PhotoFaceSorter
+  - PhotoFaceSorterTests
+
+excluded:
+  - build
+  - .build
+
+# 中文注释与中文 UI 文案较多，行宽放宽
+line_length:
+  warning: 140
+  error: 200
+  ignores_comments: true
+  ignores_urls: true
+
+file_length:
+  warning: 500
+  error: 800
+
+type_body_length:
+  warning: 300
+  error: 450
+
+function_body_length:
+  warning: 80
+  error: 140
+
+identifier_name:
+  # 允许 x / y / w / h 这类几何量简写
+  min_length: 1
+  excluded:
+    - id
+    - x
+    - y
+    - w
+    - h
+    - a
+    - b
+    - n
+
+disabled_rules:
+  # 本项目大量使用「先取快照再判断」的写法，且 Xcode 默认已开启尾随闭包风格检查
+  - trailing_closure
+  # 中文文案里出现全角标点时不应按英文规则报错
+  - todo
+
+opt_in_rules:
+  - empty_count
+  - explicit_init
+  - first_where
+  - last_where
+  - redundant_nil_coalescing
+  - sorted_first_last
+  - toggle_bool
+  - unneeded_parentheses_in_closure_argument
+
+# 设计上允许的可达复杂度（扫描循环本身分支较多）
+cyclomatic_complexity:
+  warning: 20
+  error: 30

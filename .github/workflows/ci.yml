@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          xcrun simctl list devices available | grep -i iphone | head -5
+
+      - name: Build and test
+        # 若 runner 镜像里没有 "iPhone 16"，把 name 换成上面列出的任一机型
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project PhotoFaceSorter.xcodeproj \
+            -scheme PhotoFaceSorter \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            CODE_SIGNING_ALLOWED=NO
+
+  lint:
+    runs-on: macos-15
+    # 首轮先把风格检查作为提示，不阻塞合并
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SwiftLint
+        run: brew install swiftlint
+      - name: Run SwiftLint
+        run: swiftlint lint --strict --reporter github-actions-logging

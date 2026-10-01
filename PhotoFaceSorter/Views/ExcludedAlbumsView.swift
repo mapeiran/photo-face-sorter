@@ -34,7 +34,7 @@ struct ExcludedAlbumsView: View {
             albums = PhotoLibraryService().fetchUserAlbums()
             selected = Set(UserDefaults.standard.stringArray(forKey: "excludedAlbumIDs") ?? [])
         }
-        .onChange(of: selected) { newValue in
+        .onChange(of: selected) { _, newValue in
             UserDefaults.standard.set(Array(newValue), forKey: "excludedAlbumIDs")
         }
     }

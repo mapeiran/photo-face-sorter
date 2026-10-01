@@ -3,14 +3,15 @@ import Vision
 import CoreGraphics
 
 /// 人脸检测（Vision，本地运算）
-final class FaceDetectionService {
+/// 无状态，可安全地在任意线程上使用
+final class FaceDetectionService: Sendable {
 
     /// 检测图片中的人脸，返回人脸观测
     func detectFaces(in image: CGImage) throws -> [VNFaceObservation] {
         let request = VNDetectFaceRectanglesRequest()
         let handler = VNImageRequestHandler(cgImage: image, orientation: .up, options: [:])
         try handler.perform([request])
-        return (request.results as? [VNFaceObservation]) ?? []
+        return request.results ?? []
     }
 
     /// 按归一化人脸框裁剪出人脸图
