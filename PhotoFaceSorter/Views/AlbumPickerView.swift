@@ -12,6 +12,8 @@ struct AlbumPickerView: View {
     @State private var searchText = ""
     @State private var folderByTitle: [String: String] = [:]
     @State private var folderOrder: [String] = []
+    /// 已展开的文件夹（默认收起，也可以一键展开/收起）
+    @State private var expandedFolders: Set<String> = []
 
     /// 搜索过滤后的已有相簿（保持按名称排序）
     private var filteredAlbums: [PHAssetCollection] {
@@ -54,9 +56,18 @@ struct AlbumPickerView: View {
                     }
                 } else {
                     ForEach(sections) { section in
-                        Section(section.title) {
+                        DisclosureGroup(isExpanded: expansionBinding(for: section.id)) {
                             ForEach(section.albumTitles, id: \.self) { albumTitle in
                                 albumRow(albumTitle)
+                            }
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "folder").foregroundColor(.accentColor)
+                                Text(section.title).font(.subheadline).bold()
+                                Spacer()
+                                Text("\(section.albumTitles.count) 个相簿")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
                             }
                         }
                     }
@@ -78,6 +89,15 @@ struct AlbumPickerView: View {
             .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $searchText, prompt: "搜索相簿")
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Menu {
+                        Button("展开全部") { expandedFolders = Set(sections.map(\.id)) }
+                        Button("折叠全部") { expandedFolders.removeAll() }
+                    } label: {
+                        Image(systemName: "rectangle.expand.vertical")
+                    }
+                    .disabled(sections.isEmpty)
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("取消") { dismiss() }
                 }
@@ -92,6 +112,19 @@ struct AlbumPickerView: View {
                 folderOrder = grouping.folderOrder
             }
         }
+    }
+
+    /// 文件夹展开状态：搜索时强制展开，方便直接看到匹配的相簿
+    private func expansionBinding(for sectionID: String) -> Binding<Bool> {
+        Binding(
+            get: { !trimmedSearchText.isEmpty || expandedFolders.contains(sectionID) },
+            set: { expanded in
+                if expanded {
+                    expandedFolders.insert(sectionID)
+                } else {
+                    expandedFolders.remove(sectionID)
+                }
+            })
     }
 
     private func albumRow(_ albumTitle: String) -> some View {
