@@ -15,6 +15,10 @@ struct AlbumFolderStructure: Equatable {
     var ungroupedAlbumTitles: [String] = []
     /// 相簿名 -> 展示摘要（张数 / 封面），用于「还没有对应人物」的相簿单元格
     var summaries: [String: AlbumSummary] = [:]
+    /// 相簿名 -> localIdentifier，用于「是否排除此相簿」等按相簿操作
+    var localIdentifierByAlbumTitle: [String: String] = [:]
+    /// 用户自建相簿（`.albumRegular`）的 localIdentifier；它们默认不参与扫描
+    var customAlbumLocalIDs: Set<String> = []
 
     static let empty = AlbumFolderStructure()
 

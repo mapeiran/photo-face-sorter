@@ -111,8 +111,7 @@ final class ScanCoordinator: ObservableObject {
         countTask?.cancel()
         countTask = Task {
             let counts = await Task.detached(priority: .utility) {
-                let excluded = Set(UserDefaults.standard.stringArray(forKey: "excludedAlbumIDs") ?? [])
-                return PhotoLibraryService.shared.photoCounts(excludingAlbumIDs: excluded)
+                PhotoLibraryService.shared.photoCounts()
             }.value
             guard !Task.isCancelled else { return }
             albumPhotoCount = counts.albumPhotos
@@ -149,15 +148,10 @@ final class ScanCoordinator: ObservableObject {
         let assets = library.fetchAllPhotoAssets()
         var records = store.records
 
-        // 排除相簿
-        let excludedIDs = UserDefaults.standard.stringArray(forKey: "excludedAlbumIDs") ?? []
-        let excludedAlbums = library.fetchUserAlbums().filter { excludedIDs.contains($0.localIdentifier) }
-        let excludedAssetIDs = library.fetchAssetIdentifiers(in: excludedAlbums)
-
-        // 已在**自定义相簿**里的照片视为「已归类」：扫描只处理不在任何相簿中的散图。
-        // 这样重复扫描大相册时不必再对已整理好的照片跑一遍人脸识别。
-        // 注意：只跳扫描，不动这些照片已有的样本 —— 它们仍是按相簿命名的锚点。
-        let albumAssetIDs = library.fetchAssetIdentifiers(in: library.fetchCustomAlbums())
+        // 排除相簿：显式排除的 + 默认跳过的自定义相簿（可在相簿详情里手动取消排除）。
+        // 这些照片视为已归类，扫描只处理剩下的散图；只跳扫描，不动已有样本 ——
+        // 它们仍是按相簿命名的锚点。
+        let skippedAssetIDs = library.fetchAssetIdentifiers(in: library.albumsExcludedFromScan())
 
         // 清理已从相册删除的照片记录，避免 records.json 无限增长。
         // 仅在「完全访问」下执行：受限访问时 fetch 只返回用户挑选的照片，
@@ -173,8 +167,7 @@ final class ScanCoordinator: ObservableObject {
         let candidates = assets.filter { asset in
             ScanPlanPolicy.needsScan(assetLocalIdentifier: asset.localIdentifier,
                                      modificationDate: asset.modificationDate,
-                                     isExcluded: excludedAssetIDs.contains(asset.localIdentifier),
-                                     isInAlbum: albumAssetIDs.contains(asset.localIdentifier),
+                                     isExcluded: skippedAssetIDs.contains(asset.localIdentifier),
                                      records: records)
         }
         // 单次上限：大相册分批扫，避免长时间占用设备/看起来像卡死。
@@ -194,7 +187,7 @@ final class ScanCoordinator: ObservableObject {
         let sampledAssetIDs = Set(samples.map { $0.assetLocalIdentifier })
             .union(pending.map { $0.localIdentifier })
         let albumNamesByAsset = library.albumNames(byAssetLocalIdentifier: sampledAssetIDs,
-                                                   excludingAlbumIDs: Set(excludedIDs))
+                                                   excludingAlbumIDs: AlbumExclusionStore.loadExcluded())
         let previousAlbumNames = library.userAlbumTitles()
 
         return ScanPlan(records: records,

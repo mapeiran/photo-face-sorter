@@ -160,6 +160,20 @@ struct PeopleView: View {
                                 albumCell(title)
                             }
                             .buttonStyle(.plain)
+                            // 长按即可手动切换「是否排除此相簿」
+                            .contextMenu {
+                                Button {
+                                    model.setAlbumExcludedFromScan(!model.isAlbumExcludedFromScan(title: title),
+                                                                   title: title)
+                                    coordinator.refreshLibraryCounts()
+                                } label: {
+                                    if model.isAlbumExcludedFromScan(title: title) {
+                                        Label("取消排除，参与扫描", systemImage: "eye")
+                                    } else {
+                                        Label("从扫描中排除", systemImage: "eye.slash")
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -242,6 +256,16 @@ struct PeopleView: View {
                     .padding(4)
                     .background(.black.opacity(0.35), in: Circle())
                     .padding(3)
+            }
+            .overlay(alignment: .topTrailing) {
+                if model.isAlbumExcludedFromScan(title: title) {
+                    Image(systemName: "eye.slash")
+                        .font(.caption2)
+                        .foregroundColor(.white)
+                        .padding(4)
+                        .background(.black.opacity(0.35), in: Circle())
+                        .padding(3)
+                }
             }
 
             Text(title).font(.caption).lineLimit(1)

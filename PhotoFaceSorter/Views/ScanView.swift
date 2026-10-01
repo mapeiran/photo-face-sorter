@@ -243,6 +243,20 @@ struct ScanView: View {
                         albumRow(album)
                     }
                     .buttonStyle(.plain)
+                    // 长按即可手动切换「是否排除此相簿」
+                    .contextMenu {
+                        Button {
+                            model.setAlbumExcludedFromScan(!model.isAlbumExcludedFromScan(title: album),
+                                                           title: album)
+                            coordinator.refreshLibraryCounts()
+                        } label: {
+                            if model.isAlbumExcludedFromScan(title: album) {
+                                Label("取消排除，参与扫描", systemImage: "eye")
+                            } else {
+                                Label("从扫描中排除", systemImage: "eye.slash")
+                            }
+                        }
+                    }
                     if album != albums.last { Divider() }
                 }
             }
@@ -278,6 +292,11 @@ struct ScanView: View {
 
             Text(title).font(.subheadline).foregroundColor(.primary)
             Spacer()
+            if model.isAlbumExcludedFromScan(title: title) {
+                Image(systemName: "eye.slash")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
             Text("\(summary?.photoCount ?? 0) 张")
                 .font(.caption)
                 .foregroundColor(.secondary)

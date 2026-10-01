@@ -63,6 +63,9 @@ final class PhotoLibraryService: Sendable {
                     structure.folderByAlbumTitle[title] = folderTitle
                 }
                 if !childTitles.contains(title) { childTitles.append(title) }
+                if structure.localIdentifierByAlbumTitle[title] == nil {
+                    structure.localIdentifierByAlbumTitle[title] = album.localIdentifier
+                }
                 if structure.summaries[title] == nil {
                     structure.summaries[title] = self.summary(of: album)
                 }
@@ -74,6 +77,10 @@ final class PhotoLibraryService: Sendable {
         for album in fetchCustomAlbums() {
             guard let title = album.localizedTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !title.isEmpty else { continue }
+            structure.customAlbumLocalIDs.insert(album.localIdentifier)
+            if structure.localIdentifierByAlbumTitle[title] == nil {
+                structure.localIdentifierByAlbumTitle[title] = album.localIdentifier
+            }
             if structure.summaries[title] == nil {
                 structure.summaries[title] = summary(of: album)
             }
@@ -96,17 +103,26 @@ final class PhotoLibraryService: Sendable {
         return AlbumSummary(photoCount: count, coverLocalIdentifier: cover?.localIdentifier)
     }
 
-    /// 扫描页用的计数：自定义相簿里的照片数（会跳过）与不在相簿中的散图数（会被识别）。
-    /// - Parameter excludedAlbumIDs: 被排除的相簿；它们的照片两边都不算。
-    func photoCounts(excludingAlbumIDs excludedIDs: Set<String>) -> LibraryPhotoCounts {
+    /// 扫描页用的计数：会被跳过的相簿照片数与会被识别的散图数。
+    func photoCounts() -> LibraryPhotoCounts {
         let allAssetIDs = Set(fetchAllPhotoAssets().map { $0.localIdentifier })
-        let customAlbums = fetchCustomAlbums().filter { !excludedIDs.contains($0.localIdentifier) }
-        let albumAssetIDs = fetchAssetIdentifiers(in: customAlbums)
-        let excludedAlbums = fetchUserAlbums().filter { excludedIDs.contains($0.localIdentifier) }
-        let excludedAssetIDs = fetchAssetIdentifiers(in: excludedAlbums)
+        let skippedAssetIDs = fetchAssetIdentifiers(in: albumsExcludedFromScan())
         return LibraryPhotoCountPolicy.counts(allAssetIDs: allAssetIDs,
-                                              albumAssetIDs: albumAssetIDs,
-                                              excludedAssetIDs: excludedAssetIDs)
+                                              albumAssetIDs: skippedAssetIDs,
+                                              excludedAssetIDs: [])
+    }
+
+    /// 本次扫描会跳过的相簿：显式排除的相簿 + 默认跳过的自定义相簿，
+    /// 再减去用户显式「取消排除（包含）」的相簿。
+    func albumsExcludedFromScan() -> [PHAssetCollection] {
+        let excluded = AlbumExclusionStore.loadExcluded()
+        let included = AlbumExclusionStore.loadIncluded()
+        return fetchUserAlbums().filter { album in
+            AlbumExclusionStore.isExcludedFromScan(albumLocalID: album.localIdentifier,
+                                                   isCustomAlbum: album.assetCollectionSubtype == .albumRegular,
+                                                   excluded: excluded,
+                                                   included: included)
+        }
     }
 
     /// 所有用户相簿的名字（含系统同步 / 导入生成的相簿）。

@@ -119,22 +119,31 @@ PhotoFaceSorterTests/   逻辑层单元测试
   **文件夹可以折叠/展开**：点分节标题即可折叠，右上角菜单可「展开全部 / 折叠全部」，
   相簿多时能一屏看清整体结构。
 
-- **扫描只扫「散图」**：已在任何**自定义相簿**里的照片视为用户已经分好类，
-  扫描直接跳过（`ScanPlanPolicy.needsScan(isInAlbum:)`，`ScanCoordinator.buildPlan`
-  用 `fetchCustomAlbums()` 算出这些照片），只识别**不在任何相簿中**的照片。
+- **扫描只扫「散图」**：某个相簿是否参与扫描由 `AlbumExclusionStore` 的三态决定 ——
+  用户显式**排除**的相簿跳过；显式**包含**的相簿参与；其余**自定义相簿**
+  （`.albumRegular`）默认跳过（视为已归类），系统 / 同步相簿默认参与。
+  `ScanCoordinator.buildPlan` 用 `PhotoLibraryService.albumsExcludedFromScan()`
+  算出这些照片，`ScanPlanPolicy.needsScan` 只对剩下的散图返回 true。
   这样重复扫描大相册时不必再对已整理好的照片跑一遍人脸识别。
   跳过**不会删掉这些照片已有的样本**：它们仍是「相簿优先」的锚点，
   新扫到的散图若和它们聚成一簇，会并入对应人物、显示在该相簿所属的文件夹里。
   注意：**全量重扫也遵守这条规则**（会先清空缓存），因此清空后相簿里的照片
-  不再重新识别，对应人物会退化成「相簿卡片」；要重建相簿人物需要先退出该相簿规则
-  或临时把照片移出相簿。
+  不再重新识别，对应人物会退化成「相簿卡片」；要重建相簿人物，可以在相簿详情里
+  「取消排除」让它们重新参与扫描。
+
+- **手动决定每个相簿是否参与扫描**：相簿结构里的每一行**长按**，或进
+  `AlbumDetailView` 右上角，都能切换「从扫描中排除 / 取消排除，参与扫描」；
+  被排除的相簿在列表里用 `eye.slash` 标出。设置页的「排除相簿」
+  （`ExcludedAlbumsView`）也能逐条修改。状态持久化在 `UserDefaults`：
+  `excludedAlbumIDs`（显式排除）与 `includedAlbumIDs`（对自定义相簿取消默认排除）。
+  改动后立即重算扫描页的「相簿内 / 散图」计数。
 
 - **扫描页先「看清楚要扫什么」**：扫描页顶部是扫描控件，下方是**系统相簿结构**浏览器 ——
   当前系统的全部文件夹（`AppModel.folderStructure`），每个文件夹可展开列出其中的相簿
   （封面 + 张数），点相簿进 `AlbumDetailView` 看内部照片。
-  同时用 `PhotoLibraryService.photoCounts`（纯策略 `LibraryPhotoCountPolicy`）
+  同时用 `PhotoLibraryService.photoCounts()`（纯策略 `LibraryPhotoCountPolicy`）
   展示「相簿内 N 张（会跳过识别）· 不在相簿中的散图 M 张（会被识别）」，
-  点右上角刷新可重新读取。计数与 `ScanPlanPolicy` 的口径一致：被排除相簿的照片两边都不算。
+  点右上角刷新可重新读取。计数与实际扫描共用 `albumsExcludedFromScan()`，口径一致。
   文件夹可逐个展开/折叠，也可一键「展开全部 / 折叠全部」。
 
 - **扫描中途「人物」页实时更新**：每扫过 `flushInterval`（100 张）且距上次刷新超过

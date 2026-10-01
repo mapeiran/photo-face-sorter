@@ -8,6 +8,9 @@ import Photos
 struct AlbumDetailView: View {
     let albumTitle: String
 
+    @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var coordinator: ScanCoordinator
+
     @State private var identifiers: [String] = []
     @State private var loading = true
     @State private var preview: Preview?
@@ -18,6 +21,15 @@ struct AlbumDetailView: View {
     }
 
     private let columns = [GridItem(.adaptive(minimum: 88), spacing: 6)]
+
+    /// 能否修改扫描排除状态（相簿要能在系统相册结构里找到）
+    private var canToggleScanExclusion: Bool {
+        model.albumLocalIdentifier(title: albumTitle) != nil
+    }
+
+    private var isExcludedFromScan: Bool {
+        model.isAlbumExcludedFromScan(title: albumTitle)
+    }
 
     var body: some View {
         Group {
@@ -46,6 +58,29 @@ struct AlbumDetailView: View {
         }
         .navigationTitle(albumTitle)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    model.setAlbumExcludedFromScan(!isExcludedFromScan, title: albumTitle)
+                    coordinator.refreshLibraryCounts()
+                } label: {
+                    Label(isExcludedFromScan ? "取消排除，参与扫描" : "从扫描中排除",
+                          systemImage: isExcludedFromScan ? "eye" : "eye.slash")
+                }
+                .disabled(!canToggleScanExclusion)
+            }
+        }
+        .safeAreaInset(edge: .top) {
+            if isExcludedFromScan {
+                Text("此相簿已从扫描中排除：里面的照片不会被识别。")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+                    .padding(.vertical, 6)
+                    .background(Color.accentColor.opacity(0.08))
+            }
+        }
         .task { await load() }
         .fullScreenCover(item: $preview) { preview in
             PhotoViewerView(assetIdentifiers: identifiers, initialIndex: preview.index)

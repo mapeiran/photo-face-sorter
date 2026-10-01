@@ -49,6 +49,8 @@ final class AppModel: ObservableObject {
 
     init() {
         viewedAlbumNames = Set(UserDefaults.standard.stringArray(forKey: Self.viewedAlbumsKey) ?? [])
+        excludedAlbumIDs = AlbumExclusionStore.loadExcluded()
+        includedAlbumIDs = AlbumExclusionStore.loadIncluded()
         reload()
         loadSamplesAsync()
         // 旧标定会把所有人并成一个分组，迁移时重置阈值并用新阈值重聚一次，
@@ -81,7 +83,7 @@ final class AppModel: ObservableObject {
             DispatchQueue.global(qos: .utility).async {
                 let library = PhotoLibraryService.shared
                 let assetIDs = Set(store.samples.map { $0.assetLocalIdentifier })
-                let excluded = Set(UserDefaults.standard.stringArray(forKey: "excludedAlbumIDs") ?? [])
+                let excluded = AlbumExclusionStore.loadExcluded()
                 continuation.resume(returning: (
                     byAsset: library.albumNames(byAssetLocalIdentifier: assetIDs,
                                                 excludingAlbumIDs: excluded),
@@ -156,17 +158,71 @@ final class AppModel: ObservableObject {
     /// 不只「有人物的文件夹」——空文件夹、还没识别出人物的相簿也在这里。
     @Published private(set) var folderStructure = AlbumFolderStructure.empty
 
+    /// 显式排除扫描的相簿（localIdentifier）。
+    @Published private(set) var excludedAlbumIDs: Set<String> = []
+    /// 显式「取消默认排除」的自定义相簿（localIdentifier）。
+    @Published private(set) var includedAlbumIDs: Set<String> = []
+
     /// 刷新系统相簿文件夹结构。
     ///
     /// 在照片 App 里改过文件夹后，重新进入人物页即可更新。枚举文件夹、
     /// 取相簿封面都要走 PhotoKit，放到后台线程，避免进入人物页时卡一下。
     func refreshFolderGrouping() {
+        excludedAlbumIDs = AlbumExclusionStore.loadExcluded()
+        includedAlbumIDs = AlbumExclusionStore.loadIncluded()
         Task {
             let structure = await Task.detached(priority: .utility) {
                 PhotoLibraryService.shared.albumFolderStructure()
             }.value
             folderStructure = structure
         }
+    }
+
+    // MARK: - 扫描排除相簿
+
+    /// 相簿名 -> localIdentifier（来自系统相册结构）
+    func albumLocalIdentifier(title: String) -> String? {
+        folderStructure.localIdentifierByAlbumTitle[title]
+    }
+
+    /// 这个相簿是否会在扫描时被跳过：
+    /// 显式排除的相簿，或未被显式「包含」的自定义相簿（默认跳过）。
+    func isAlbumExcludedFromScan(localID: String, isCustom: Bool) -> Bool {
+        AlbumExclusionStore.isExcludedFromScan(albumLocalID: localID,
+                                               isCustomAlbum: isCustom,
+                                               excluded: excludedAlbumIDs,
+                                               included: includedAlbumIDs)
+    }
+
+    func isAlbumExcludedFromScan(title: String) -> Bool {
+        guard let localID = albumLocalIdentifier(title: title) else { return false }
+        return isAlbumExcludedFromScan(localID: localID,
+                                       isCustom: folderStructure.customAlbumLocalIDs.contains(localID))
+    }
+
+    /// 手动修改某个相簿是否排除扫描，并持久化。
+    func setAlbumExcludedFromScan(_ excluded: Bool, localID: String, isCustom: Bool) {
+        var included = includedAlbumIDs
+        var excludedIDs = excludedAlbumIDs
+        if excluded {
+            included.remove(localID)
+            excludedIDs.insert(localID)
+        } else {
+            excludedIDs.remove(localID)
+            // 自定义相簿默认排除，取消排除要显式记进「包含」名单
+            if isCustom { included.insert(localID) } else { included.remove(localID) }
+        }
+        includedAlbumIDs = included
+        excludedAlbumIDs = excludedIDs
+        AlbumExclusionStore.saveIncluded(included)
+        AlbumExclusionStore.saveExcluded(excludedIDs)
+    }
+
+    func setAlbumExcludedFromScan(_ excluded: Bool, title: String) {
+        guard let localID = albumLocalIdentifier(title: title) else { return }
+        setAlbumExcludedFromScan(excluded,
+                                 localID: localID,
+                                 isCustom: folderStructure.customAlbumLocalIDs.contains(localID))
     }
 
     // MARK: - 人物

@@ -8,16 +8,15 @@ enum ScanPlanPolicy {
 
     /// 这张照片是否需要扫描。
     ///
-    /// - Parameter isExcluded: 是否属于被排除的相簿。
-    /// - Parameter isInAlbum: 是否属于某个**自定义相簿**。用户把照片放进相簿
-    ///   就说明已经分好类了，不必再跑人脸识别 —— 扫描只处理「散图」。
+    /// - Parameter isExcluded: 是否属于「扫描排除」的相簿。用户把照片放进相簿、
+    ///   或手动排除了某个相簿，就说明这些照片已经分好类，不必再跑人脸识别 ——
+    ///   扫描只处理散图。排除名单由 `AlbumExclusionStore` 决定
+    ///   （自定义相簿默认排除，可手动取消）。
     static func needsScan(assetLocalIdentifier: String,
                           modificationDate: Date?,
                           isExcluded: Bool,
-                          isInAlbum: Bool = false,
                           records: [String: AssetRecord]) -> Bool {
         guard !isExcluded else { return false }
-        guard !isInAlbum else { return false }
         guard let record = records[assetLocalIdentifier] else { return true }
         // 新增的会走到上面；这里覆盖「内容被修改过」的照片
         return record.modificationDate != modificationDate
