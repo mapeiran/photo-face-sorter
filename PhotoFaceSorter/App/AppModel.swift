@@ -328,6 +328,26 @@ final class AppModel: ObservableObject {
         persistSamples(list)
     }
 
+    /// 把某个人物的照片写入系统相簿（复制 / 移动），返回给用户看的总结。
+    /// 复用规则引擎，成功时会把一条执行日志计进日志列表（可回退）。
+    func exportPersonToAlbum(_ person: Person, action: RuleAction) async -> String {
+        var seen = Set<String>()
+        var assetIDs: [String] = []
+        for sample in samples(of: person) where seen.insert(sample.assetLocalIdentifier).inserted {
+            assetIDs.append(sample.assetLocalIdentifier)
+        }
+        guard !assetIDs.isEmpty else { return "该人物还没有照片。" }
+        do {
+            let outcome = try await PersonAlbumExporter.export(personName: person.displayName,
+                                                               assetIDs: assetIDs,
+                                                               action: action)
+            if let log = outcome.log { appendLog(log) }
+            return outcome.summary
+        } catch {
+            return "写入系统相簿失败：\(error.localizedDescription)"
+        }
+    }
+
     /// 标记为非人物人脸（屏蔽）
     func ignoreSamples(_ samplesToIgnore: [FaceSample]) {
         var list = samples

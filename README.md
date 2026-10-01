@@ -140,6 +140,12 @@ PhotoFaceSorterTests/   逻辑层单元测试
   `excludedAlbumIDs`（显式排除）与 `includedAlbumIDs`（对自定义相簿取消默认排除）。
   改动后立即重算扫描页的「相簿内 / 散图」计数。
 
+- **把人物（尤其 AI 分组）写进系统相簿**：人物详情页的「写入系统相簿」分区，或人物页
+  **长按**卡片，都有「复制到 / 移动到系统相簿」—— 以人物名新建或复用系统相簿
+  （`PersonAlbumExporter` → 复用 `RuleEngine.execute`），把该人物的照片写进去；
+  `AppModel.exportPersonToAlbum` 负责去重取照片并记一条执行日志，所以能在执行日志里
+  **回退**。复制只增不改；「移动」会从其它相簿移除这些照片（原图始终不删除），带二次确认。
+
 - **扫描页先「看清楚要扫什么」**：扫描页顶部是扫描控件，下方是**系统相簿结构**浏览器 ——
   当前系统的全部文件夹（`AppModel.folderStructure`），每个文件夹可展开列出其中的相簿
   （封面 + 张数），点相簿进 `AlbumDetailView` 看内部照片。

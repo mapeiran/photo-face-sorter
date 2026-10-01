@@ -9,6 +9,10 @@ struct PeopleView: View {
     /// 被折叠的文件夹 / 分组（按分节 id）。默认全部展开。
     @State private var collapsedSections: Set<String> = []
 
+    /// 长按人物卡片 -> 写入系统相簿
+    @State private var albumMovePerson: Person?
+    @State private var albumMessage: String?
+
     private let columns = [GridItem(.adaptive(minimum: 96), spacing: 12)]
 
     var body: some View {
@@ -82,6 +86,31 @@ struct PeopleView: View {
                     .background(.ultraThinMaterial)
                 }
             }
+            .confirmationDialog("移动到系统相簿？",
+                                isPresented: Binding(get: { albumMovePerson != nil },
+                                                     set: { if !$0 { albumMovePerson = nil } }),
+                                titleVisibility: .visible) {
+                if let person = albumMovePerson {
+                    Button("移动", role: .destructive) { exportPerson(person, action: .move) }
+                }
+                Button("取消", role: .cancel) { albumMovePerson = nil }
+            } message: {
+                Text("会把该人物的照片加入系统相簿，并从其它相簿中移除。原图不会被删除，可从执行日志回退。")
+            }
+            .alert("完成",
+                   isPresented: Binding(get: { albumMessage != nil },
+                                        set: { if !$0 { albumMessage = nil } })) {
+                Button("好", role: .cancel) { albumMessage = nil }
+            } message: {
+                Text(albumMessage ?? "")
+            }
+        }
+    }
+
+    private func exportPerson(_ person: Person, action: RuleAction) {
+        albumMovePerson = nil
+        Task {
+            albumMessage = await model.exportPersonToAlbum(person, action: action)
         }
     }
 
@@ -148,6 +177,19 @@ struct PeopleView: View {
                                 personCell(person)
                             }
                             .buttonStyle(.plain)
+                            // 长按 AI 分组即可直接落成系统相簿
+                            .contextMenu {
+                                Button {
+                                    exportPerson(person, action: .copy)
+                                } label: {
+                                    Label("复制到系统相簿", systemImage: "rectangle.stack.badge.plus")
+                                }
+                                Button {
+                                    albumMovePerson = person
+                                } label: {
+                                    Label("移动到系统相簿…", systemImage: "rectangle.stack.badge.minus")
+                                }
+                            }
                         }
                     }
                     ForEach(group.albumTitles, id: \.self) { title in

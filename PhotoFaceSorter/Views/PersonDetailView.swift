@@ -26,6 +26,11 @@ struct PersonDetailView: View {
     /// 长按缩略图 -> 查看照片详情
     @State private var detailTarget: PhotoDetailTarget?
 
+    /// 写入系统相簿
+    @State private var showAlbumMoveConfirm = false
+    @State private var isExportingToAlbum = false
+    @State private var albumMessage: String?
+
     /// 看图页的入口数据：整组样本 + 起始位置
     private struct PhotoPreview: Identifiable {
         let id = UUID()
@@ -65,6 +70,28 @@ struct PersonDetailView: View {
             Section {
                 Toggle("选择模式（批量调整）", isOn: $selectMode)
                     .onChange(of: selectMode) { _, newValue in if !newValue { selected.removeAll() } }
+            }
+
+            Section("写入系统相簿") {
+                Button {
+                    exportToAlbum(.copy, person: person)
+                } label: {
+                    Label("复制到「\(person.displayName)」", systemImage: "rectangle.stack.badge.plus")
+                }
+                .disabled(samples.isEmpty || isExportingToAlbum)
+
+                Button(role: .destructive) {
+                    showAlbumMoveConfirm = true
+                } label: {
+                    Label("移动到「\(person.displayName)」", systemImage: "rectangle.stack.badge.minus")
+                }
+                .disabled(samples.isEmpty || isExportingToAlbum)
+
+                Text("新建（或复用）系统相簿「\(person.displayName)」并写入该人物的照片。"
+                     + "「移动」会从其它相簿移除这些照片，原图不会被删除；"
+                     + "操作会记进执行日志，可回退。")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
             }
 
             Section("照片（\(samples.count)）") {
@@ -155,6 +182,22 @@ struct PersonDetailView: View {
         .sheet(item: $detailTarget) { target in
             PhotoDetailView(assetLocalIdentifier: target.id)
         }
+        .confirmationDialog("移动到系统相簿？",
+                            isPresented: $showAlbumMoveConfirm,
+                            titleVisibility: .visible) {
+            Button("移动", role: .destructive) { exportToAlbum(.move, person: person) }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("会把该人物的照片加入系统相簿「\(person.displayName)」，并从其它相簿中移除。"
+                 + "原图不会被删除，可从执行日志回退。")
+        }
+        .alert("完成",
+               isPresented: Binding(get: { albumMessage != nil },
+                                    set: { if !$0 { albumMessage = nil } })) {
+            Button("好", role: .cancel) { albumMessage = nil }
+        } message: {
+            Text(albumMessage ?? "")
+        }
     }
 
     @ViewBuilder
@@ -215,5 +258,17 @@ struct PersonDetailView: View {
     private func clearSelection() {
         selected.removeAll()
         selectMode = false
+    }
+
+    private func exportToAlbum(_ action: RuleAction, person: Person) {
+        guard !samples.isEmpty else {
+            albumMessage = "该人物还没有照片。"
+            return
+        }
+        isExportingToAlbum = true
+        Task {
+            albumMessage = await model.exportPersonToAlbum(person, action: action)
+            isExportingToAlbum = false
+        }
     }
 }
