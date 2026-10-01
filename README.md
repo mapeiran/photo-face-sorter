@@ -116,6 +116,8 @@ PhotoFaceSorterTests/   逻辑层单元测试
   还没「标记已查看」的新相簿不单独成组，而是留在自己的文件夹里、角标「新增」，
   顶部横幅显示数量并提供「标记已查看」（`AppModel.markNewAlbumsViewed`，
   名单持久化在 `UserDefaults`）。
+  **文件夹可以折叠/展开**：点分节标题即可折叠，右上角菜单可「展开全部 / 折叠全部」，
+  相簿多时能一屏看清整体结构。
 
 - **扫描只扫「散图」**：已在任何**自定义相簿**里的照片视为用户已经分好类，
   扫描直接跳过（`ScanPlanPolicy.needsScan(isInAlbum:)`，`ScanCoordinator.buildPlan`
@@ -133,6 +135,14 @@ PhotoFaceSorterTests/   逻辑层单元测试
   同时用 `PhotoLibraryService.photoCounts`（纯策略 `LibraryPhotoCountPolicy`）
   展示「相簿内 N 张（会跳过识别）· 不在相簿中的散图 M 张（会被识别）」，
   点右上角刷新可重新读取。计数与 `ScanPlanPolicy` 的口径一致：被排除相簿的照片两边都不算。
+  文件夹可逐个展开/折叠，也可一键「展开全部 / 折叠全部」。
+
+- **扫描中途「人物」页实时更新**：每扫过 `flushInterval`（100 张）且距上次刷新超过
+  `ScanCoordinator.liveRefreshInterval`（8 秒）时，就对已扫到的部分做一次聚类并落盘，
+  再通过 `onResultsChanged` 回调让 `AppModel.reload()` + `loadSamplesAsync()` ——
+  不用等整批扫完，人物页就会出现新的分组。刷新按时间节流，避免频繁全量聚类拖慢扫描；
+  扫描结束仍会做一次完整聚类。实时聚类写回的归属会被读回扫描中的样本数组，
+  防止下一轮 `persist` 覆盖掉；手工 / 自动扫描都会触发（回调在 `AppDelegate` 装配）。
 - **看图页可翻页、可单张调整**：全屏看图左右滑动（或点底部 ‹ › 按钮）翻看
   **同一分组**的上一张/下一张，标题显示「第几张 / 共几张」；**单击退出**、
   双击放大、双指缩放；未放大时滑动翻页，放大后拖动改为平移

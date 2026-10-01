@@ -53,6 +53,14 @@ final class ScanCoordinator: ObservableObject {
     /// 太大则崩溃时丢的进度多。扫描本身是幂等的，丢掉的进度下次重扫即可，所以取偏大的值。
     private let flushInterval = 100
 
+    /// 扫描中途「实时展示到人物页」的最小间隔（秒）。
+    /// 每次刷新都要对已扫到的全部人脸重新聚类，太频繁会明显拖慢扫描，因此按时间节流。
+    private let liveRefreshInterval: TimeInterval = 8
+    private var lastLiveRefresh = Date.distantPast
+
+    /// 扫描过程中结果变化时回调（把中间结果实时同步到人物页）。始终在主线程调用。
+    var onResultsChanged: (@MainActor () -> Void)?
+
     private var runTask: Task<Void, Never>?
     private var countTask: Task<Void, Never>?
     private var paused = false
@@ -211,6 +219,10 @@ final class ScanCoordinator: ObservableObject {
         faceCount = 0
         unavailable = 0
         remaining = plan.remaining
+        lastLiveRefresh = .distantPast
+
+        // 本次落盘周期内是否新增过人脸样本（没有就不必做实时聚类）
+        var addedSinceFlush = false
 
         for asset in pending {
             if stopped || Task.isCancelled { break }
@@ -235,6 +247,7 @@ final class ScanCoordinator: ObservableObject {
                         samples.append(FaceSample(assetLocalIdentifier: asset.localIdentifier,
                                                   boundingBox: face.boundingBox,
                                                   feature: feature))
+                        addedSinceFlush = true
                     }
                 }
             } else {
@@ -252,6 +265,11 @@ final class ScanCoordinator: ObservableObject {
 
             if scanned % flushInterval == 0 {
                 persist(samples: samples, records: records, store: store)
+                if addedSinceFlush, await refreshLiveResults(store: store, plan: plan) {
+                    // 实时聚类把归属写回了 store.samples，取回来避免下一轮 persist 覆盖掉
+                    samples = store.samples
+                    addedSinceFlush = false
+                }
             }
         }
 
@@ -269,8 +287,24 @@ final class ScanCoordinator: ObservableObject {
                                                        threshold: Self.currentThreshold(),
                                                        albumNamesByAsset: plan.albumNamesByAsset,
                                                        previousAlbumNames: plan.previousAlbumNames)
+            onResultsChanged?()
         }
         state = .finished
+    }
+
+    /// 扫描中途把已完成的部分聚类一次并通知界面，让「人物」页实时看到结果。
+    /// - Returns: 是否真的执行了刷新（被时间节流时返回 false）。
+    private func refreshLiveResults(store: CacheStore, plan: ScanPlan) async -> Bool {
+        guard onResultsChanged != nil else { return false }
+        let now = Date()
+        guard now.timeIntervalSince(lastLiveRefresh) >= liveRefreshInterval else { return false }
+        lastLiveRefresh = now
+        await ClusterRebuilder.rebuildInBackground(store: store,
+                                                   threshold: Self.currentThreshold(),
+                                                   albumNamesByAsset: plan.albumNamesByAsset,
+                                                   previousAlbumNames: plan.previousAlbumNames)
+        onResultsChanged?()
+        return true
     }
 
     // MARK: - 聚类

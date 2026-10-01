@@ -11,6 +11,8 @@ struct ScanView: View {
     @State private var showRunConfirm = false
     @State private var runMessage: String?
     @State private var showFullRescanConfirm = false
+    /// 扫描页相簿结构里被展开的文件夹（默认折叠）
+    @State private var expandedFolders: Set<String> = []
 
     var body: some View {
         NavigationStack {
@@ -94,6 +96,12 @@ struct ScanView: View {
                 stat("人脸数", "\(coordinator.faceCount)")
             }
 
+            if coordinator.state == .scanning {
+                Text("识别到的分组会实时出现在「人物」页，不必等整批扫完。")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+            }
+
             HStack(spacing: 12) {
                 if coordinator.state == .scanning {
                     Button("暂停") { coordinator.pause() }.buttonStyle(.bordered)
@@ -172,6 +180,14 @@ struct ScanView: View {
             HStack {
                 Text("系统相簿结构").font(.headline)
                 Spacer()
+                // 文件夹可以逐个展开/折叠，也可以一键全部展开或折叠
+                Menu {
+                    Button("展开全部") { expandedFolders = Set(structureFolderTitles) }
+                    Button("折叠全部") { expandedFolders.removeAll() }
+                } label: {
+                    Image(systemName: "rectangle.expand.vertical")
+                }
+                .font(.footnote)
                 Button {
                     model.refreshFolderGrouping()
                     coordinator.refreshLibraryCounts()
@@ -205,8 +221,20 @@ struct ScanView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    /// 结构里全部可展开的文件夹标题（含「未分组」）
+    private var structureFolderTitles: [String] {
+        var titles = model.folderStructure.folderOrder
+        if !model.folderStructure.ungroupedAlbumTitles.isEmpty { titles.append("未分组") }
+        return titles
+    }
+
     private func folderDisclosure(title: String, albums: [String]) -> some View {
-        DisclosureGroup {
+        let isExpanded = Binding(
+            get: { expandedFolders.contains(title) },
+            set: { expanded in
+                if expanded { expandedFolders.insert(title) } else { expandedFolders.remove(title) }
+            })
+        return DisclosureGroup(isExpanded: isExpanded) {
             VStack(spacing: 0) {
                 ForEach(albums, id: \.self) { album in
                     NavigationLink {

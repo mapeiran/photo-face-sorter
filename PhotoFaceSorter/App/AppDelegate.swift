@@ -18,6 +18,14 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         BackgroundScanService.shared.registerIfNeeded()
         autoScan.configure(store: model.store, coordinator: coordinator)
+
+        // 扫描中途把已扫到的部分实时同步到「人物」页，
+        // 不必等整批扫完才刷新（手工 / 自动扫描都会走到这里）。
+        coordinator.onResultsChanged = { [weak self] in
+            guard let self else { return }
+            self.model.reload()
+            self.model.loadSamplesAsync()
+        }
         return true
     }
 

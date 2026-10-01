@@ -6,6 +6,8 @@ struct PeopleView: View {
 
     @State private var editMode = false
     @State private var selected: Set<UUID> = []
+    /// 被折叠的文件夹 / 分组（按分节 id）。默认全部展开。
+    @State private var collapsedSections: Set<String> = []
 
     private let columns = [GridItem(.adaptive(minimum: 96), spacing: 12)]
 
@@ -43,6 +45,22 @@ struct PeopleView: View {
                     }
                     // 扫描进行中不能重聚类：两者都会读改写 store.samples，会互相覆盖
                     .disabled(model.samples.isEmpty || model.isReclustering || coordinator.state == .scanning)
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    // 文件夹多的时候可以一键折叠，只看结构
+                    Menu {
+                        Button("展开全部") {
+                            withAnimation(.easeInOut(duration: 0.2)) { collapsedSections.removeAll() }
+                        }
+                        Button("折叠全部") {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                collapsedSections = Set(sections.map(\.id))
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "rectangle.expand.vertical")
+                    }
+                    .disabled(sections.isEmpty)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(editMode ? "完成" : "选择") {
@@ -92,14 +110,28 @@ struct PeopleView: View {
     }
 
     private func section(_ group: PeopleSectionBuilder.Section) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(group.title).font(.headline)
-                Text(subtitle(for: group))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+        let isCollapsed = collapsedSections.contains(group.id)
+        return VStack(alignment: .leading, spacing: 10) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) { toggleCollapsed(group.id) }
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    Text(group.title).font(.headline)
+                    Text(subtitle(for: group))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
             }
-            if group.isEmpty {
+            .buttonStyle(.plain)
+
+            if isCollapsed {
+                EmptyView()
+            } else if group.isEmpty {
                 Text("（空文件夹）")
                     .font(.footnote)
                     .foregroundColor(.secondary)
@@ -217,6 +249,11 @@ struct PeopleView: View {
                 .font(.caption2)
                 .foregroundColor(.secondary)
         }
+    }
+
+    private func toggleCollapsed(_ id: String) {
+        if collapsedSections.contains(id) { collapsedSections.remove(id) }
+        else { collapsedSections.insert(id) }
     }
 
     private func toggle(_ person: Person) {
