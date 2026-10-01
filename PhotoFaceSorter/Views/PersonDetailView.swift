@@ -244,9 +244,10 @@ struct PersonDetailView: View {
                     Label("查看详情", systemImage: "info.circle")
                 }
                 Button {
-                    PhotoLibraryService.openSystemPhotosApp()
+                    PhotoLibraryService.searchSystemPhotos(
+                        forAssetLocalIdentifier: sample.assetLocalIdentifier)
                 } label: {
-                    Label("在系统相册中打开", systemImage: "photo.on.rectangle")
+                    Label("在「照片」中按日期搜索", systemImage: "photo.on.rectangle.angled")
                 }
                 Button {
                     albumPickAssetID = sample.assetLocalIdentifier

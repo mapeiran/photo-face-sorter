@@ -193,11 +193,42 @@ final class PhotoLibraryService: Sendable {
 
     /// 打开系统「照片」App。
     ///
-    /// iOS 没有公开接口能直接定位到某张具体照片，`photos-redirect://` 是社区通用方案，
-    /// 只能打开「照片」App，由用户自己找到那张；系统若不再支持该 scheme 会静默失败。
+    /// iOS **没有公开接口**能直接定位到某张具体照片：Photos.app 虽然注册了
+    /// `photos://asset?uuid=` / `photos://contentmode?...&assetuuid=`，但它们被标记为
+    /// `CFBundleURLIsPrivate = true`，外部 App 调用会被系统拒绝
+    /// （实测返回 `LSApplicationWorkspaceErrorDomain error 115`）。
+    /// 所以只能打开「照片」App；要尽量靠近某张照片请用 `searchSystemPhotos`。
     @MainActor
     static func openSystemPhotosApp() {
         guard let url = URL(string: "photos-redirect://") else { return }
+        UIApplication.shared.open(url, options: [:], completionHandler: nil)
+    }
+
+    /// 在系统「照片」App 里按**拍摄日期**搜索这张照片。
+    ///
+    /// 用公开 scheme `photos-navigation://search?searchTerm=`（Photos.app 的
+    /// Info.plist 里 `CFBundleURLIsPrivate = false`，实测可打开搜索并填入关键词）。
+    /// 这是目前唯一能「尽量靠近」某张具体照片的公开做法：会显示**当天的照片**，
+    /// 仍需用户自己找到那一张。读不到拍摄日期时退回只打开「照片」App。
+    @MainActor
+    static func searchSystemPhotos(forAssetLocalIdentifier identifier: String) {
+        guard let date = shared.asset(localIdentifier: identifier)?.creationDate else {
+            openSystemPhotosApp()
+            return
+        }
+        let formatter = DateFormatter()
+        formatter.locale = .current
+        formatter.dateStyle = .long
+        formatter.timeStyle = .none
+        var components = URLComponents()
+        components.scheme = "photos-navigation"
+        components.host = "search"
+        components.queryItems = [URLQueryItem(name: "searchTerm",
+                                              value: formatter.string(from: date))]
+        guard let url = components.url else {
+            openSystemPhotosApp()
+            return
+        }
         UIApplication.shared.open(url, options: [:], completionHandler: nil)
     }
 

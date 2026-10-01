@@ -42,12 +42,20 @@ struct PhotoDetailView: View {
 
                 Section {
                     Button {
+                        PhotoLibraryService.searchSystemPhotos(
+                            forAssetLocalIdentifier: assetLocalIdentifier)
+                    } label: {
+                        Label("在「照片」中按日期搜索", systemImage: "photo.on.rectangle.angled")
+                    }
+                    Button {
                         PhotoLibraryService.openSystemPhotosApp()
                     } label: {
-                        Label("在系统相册中打开", systemImage: "photo.on.rectangle")
+                        Label("打开「照片」App", systemImage: "photo.on.rectangle")
                     }
                 } footer: {
-                    Text("iOS 没有公开接口能直接定位到某一张照片，「在系统相册中打开」会打开「照片」App。")
+                    Text("iOS 没有公开接口能直接定位到某一张照片（能直开的 photos:// 是私有 scheme，"
+                         + "外部 App 会被系统拒绝）。「按日期搜索」会打开「照片」的搜索并填入拍摄日期，"
+                         + "显示当天的照片，再自己找到那张。")
                 }
             }
             .navigationTitle("照片详情")

@@ -172,9 +172,13 @@ PhotoFaceSorterTests/   逻辑层单元测试
 
 - **照片详情 / 在系统「照片」打开**：看图页右上角菜单、人物详情与相簿里的缩略图**长按**，
   都提供「查看详情」（`PhotoDetailView`：类型、尺寸、收藏、拍摄/修改时间、位置、文件名）
-  与「在系统相册中打开」。注意：iOS **没有公开接口**能直接定位到某一张具体照片，
-  后者用社区通用的 `photos-redirect://` 打开「照片」App，由用户自己找到那张；
-  系统若不再支持该 scheme 会静默失败（`PhotoLibraryService.openSystemPhotosApp()`）。
+  与「在「照片」中按日期搜索」。注意：iOS **没有公开接口**能直接定位到某一张具体照片 ——
+  Photos.app 确实注册了 `photos://asset?uuid=` / `photos://contentmode?...&assetuuid=`，
+  但它们被标记为 `CFBundleURLIsPrivate = true`，外部 App 调用会被系统拒绝
+  （模拟器实测 `LSApplicationWorkspaceErrorDomain error 115`）。所以这里改用**公开** scheme
+  `photos-navigation://search?searchTerm=<拍摄日期>`（`PhotoLibraryService.searchSystemPhotos`）：
+  会打开「照片」的搜索并填入拍摄日期、显示当天的照片，仍需自己找到那一张；
+  读不到拍摄日期时退回 `photos-redirect://`（`openSystemPhotosApp`）只打开「照片」App。
 
 - **重复图片（只列不删）**：设置 → 重复图片（`DuplicateFinderView`）用感知哈希 dHash
   （`PerceptualHash`：9×8 灰度差分 64 位）扫描照片库，按汉明距离 ≤

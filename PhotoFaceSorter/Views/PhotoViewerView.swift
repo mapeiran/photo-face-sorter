@@ -92,9 +92,16 @@ struct PhotoViewerView: View {
                             Label("查看详情", systemImage: "info.circle")
                         }
                         Button {
+                            if let currentIdentifier {
+                                PhotoLibraryService.searchSystemPhotos(forAssetLocalIdentifier: currentIdentifier)
+                            }
+                        } label: {
+                            Label("在「照片」中按日期搜索", systemImage: "photo.on.rectangle.angled")
+                        }
+                        Button {
                             PhotoLibraryService.openSystemPhotosApp()
                         } label: {
-                            Label("在系统相册中打开", systemImage: "photo.on.rectangle")
+                            Label("打开「照片」App", systemImage: "photo.on.rectangle")
                         }
                         Button { showAlbumPicker = true } label: {
                             Label("移到系统相簿…", systemImage: "rectangle.stack.badge.minus")
