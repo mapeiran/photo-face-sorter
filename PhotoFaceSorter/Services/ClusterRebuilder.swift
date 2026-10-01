@@ -129,12 +129,41 @@ enum ClusterRebuilder {
             }
         }
 
-        // 3) 清理空人物：只保留用户命名过的，避免每次扫描留下垃圾分组
+        // 3) 同一张照片只归一个人物。
+        //    一张合影上可能有多张脸，AI 可能把它们分到不同人物；按多数票统一成一个人物，
+        //    避免同一张照片同时出现在多个人物（相簿）里。手动修正 / 忽略的样本不参与。
+        var personVotesByAsset: [String: [UUID: (count: Int, firstSeen: Int)]] = [:]
+        for index in samples.indices where !locked.contains(index) && !assignedByAlbum[index] {
+            guard let personID = samples[index].personID else { continue }
+            let asset = samples[index].assetLocalIdentifier
+            var tally = personVotesByAsset[asset] ?? [:]
+            let existing = tally[personID]
+            tally[personID] = (count: (existing?.count ?? 0) + 1,
+                               firstSeen: existing?.firstSeen ?? index)
+            personVotesByAsset[asset] = tally
+        }
+        for index in samples.indices where !locked.contains(index) && !assignedByAlbum[index] {
+            guard let personID = samples[index].personID,
+                  let winner = winningPerson(in: personVotesByAsset[samples[index].assetLocalIdentifier] ?? [:]),
+                  winner != personID else { continue }
+            samples[index].personID = winner
+        }
+
+        // 4) 清理空人物：只保留用户命名过的，避免每次扫描留下垃圾分组
         let used = Set(samples.compactMap { $0.personID })
         people = people.filter { used.contains($0.id) || isUserNamed($0, previousAlbumNames) }
 
         store.people = people
         store.samples = samples
+    }
+
+    /// 一张照片上票数最多的人物；票数相同时取最早出现的那张脸，保证结果可复现。
+    private static func winningPerson(in tally: [UUID: (count: Int, firstSeen: Int)]) -> UUID? {
+        tally.max { lhs, rhs in
+            lhs.value.count == rhs.value.count
+                ? lhs.value.firstSeen > rhs.value.firstSeen
+                : lhs.value.count < rhs.value.count
+        }?.key
     }
 
     /// 每个相簿名覆盖多少张（去重后）照片，用于多相簿时选更「专有」的那个

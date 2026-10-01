@@ -42,9 +42,10 @@ final class AppModel: ObservableObject {
 
     /// 聚类规则版本。v1 = 旧的 0.5…1.5（默认 0.9），v2 = 新的 0.10…0.35（默认 0.25），
     /// v3 = 只用自定义相簿命名，v4 = 归类改为「相簿优先、AI 兜底」，
-    /// v5 = 只让「像人名」的自定义相簿参与归类。版本变旧会在启动时自动重聚一次。
+    /// v5 = 只让「像人名」的自定义相簿参与归类，v6 = 同一张照片只归一个人物。
+    /// 版本变旧会在启动时自动重聚一次。
     private static let thresholdVersionKey = "clusterThresholdVersion"
-    private static let thresholdVersion = 5
+    private static let thresholdVersion = 6
 
     init() {
         viewedAlbumNames = Set(UserDefaults.standard.stringArray(forKey: Self.viewedAlbumsKey) ?? [])

@@ -373,6 +373,45 @@ final class ClusterRebuilderTests: XCTestCase {
                        "新照片应并入已有的人物")
     }
 
+    /// 同一张照片上的多张脸只能归一个人物，避免同一张照片同时出现在多个人物（相簿）里
+    func testFacesOfTheSamePhotoShareOnePerson() {
+        let store = tempStore()
+        let clusterC: [Float] = [0, 0, 1, 0]
+        store.samples = [
+            FaceSample(assetLocalIdentifier: "p1", boundingBox: .zero, feature: clusterA),
+            FaceSample(assetLocalIdentifier: "p1", boundingBox: .zero, feature: clusterA),
+            FaceSample(assetLocalIdentifier: "p1", boundingBox: .zero, feature: clusterB),
+            FaceSample(assetLocalIdentifier: "p2", boundingBox: .zero, feature: clusterC),
+        ]
+
+        ClusterRebuilder.rebuild(store: store, threshold: 0.5)
+
+        let p1People = Set(store.samples.filter { $0.assetLocalIdentifier == "p1" }
+            .compactMap { $0.personID })
+        XCTAssertEqual(p1People.count, 1, "同一张照片只能归一个人物（按多数票取）")
+        XCTAssertNotEqual(store.samples.first { $0.assetLocalIdentifier == "p2" }?.personID,
+                          p1People.first)
+    }
+
+    /// 手动指定的脸不参与「同照片归一」，仍留在用户指定的人物里
+    func testManualFaceIsNotMovedByPhotoConsolidation() {
+        let store = tempStore()
+        let manualPerson = Person(name: "张三")
+        let manual = FaceSample(assetLocalIdentifier: "p1", boundingBox: .zero, feature: clusterB,
+                                personID: manualPerson.id, isIgnored: false, assignmentIsManual: true)
+        store.people = [manualPerson]
+        store.samples = [
+            manual,
+            FaceSample(assetLocalIdentifier: "p1", boundingBox: .zero, feature: clusterA),
+            FaceSample(assetLocalIdentifier: "p1", boundingBox: .zero, feature: clusterA),
+        ]
+
+        ClusterRebuilder.rebuild(store: store, threshold: 0.5)
+
+        XCTAssertEqual(store.samples.first { $0.id == manual.id }?.personID, manualPerson.id,
+                       "手动指定的归属不能被同照片归一改动")
+    }
+
     /// 命名过的人物即使被清空，其编号也不应被新人物重新占用（避免名字撞车）
     func testPreservedEmptyPersonKeepsItsNumberReserved() {
         let store = tempStore()
