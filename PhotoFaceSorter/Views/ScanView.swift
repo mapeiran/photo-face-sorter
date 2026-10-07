@@ -9,6 +9,8 @@ struct ScanView: View {
 
     @State private var showFullRescanConfirm = false
     @State private var showAlbumRescanConfirm = false
+    /// 已有扫描在跑，或状态刚好变了 —— 提示用户而不是静默失败
+    @State private var showScanBusyAlert = false
     /// 扫描页相簿结构里被展开的文件夹（默认折叠）
     @State private var expandedFolders: Set<String> = []
 
@@ -23,6 +25,12 @@ struct ScanView: View {
                 }
             }
             .navigationTitle("扫描")
+            .alert("正在扫描", isPresented: $showScanBusyAlert) {
+                Button("好", role: .cancel) {}
+            } message: {
+                Text("已经有一个扫描任务在跑（可能是后台自动扫描）。"
+                     + "等它结束、或先在上面终止它，再试一次。")
+            }
             .task {
                 await requestAuthorization()
                 model.refreshFolderGrouping()
@@ -95,7 +103,7 @@ struct ScanView: View {
                         scanLimitPicker
 
                         Button("开始扫描（增量）") {
-                            coordinator.start(store: model.store, limit: scanLimit)
+                            startScan(limit: scanLimit, scope: .loosePhotos)
                         }
                         .buttonStyle(.borderedProminent)
 
@@ -107,10 +115,13 @@ struct ScanView: View {
                                             isPresented: $showFullRescanConfirm,
                                             titleVisibility: .visible) {
                             Button("清空并重扫", role: .destructive) {
+                                // 先确认能启动，再清缓存：否则会「数据清了、扫描没跑起来」
+                                guard coordinator.canStartScan else {
+                                    showScanBusyAlert = true
+                                    return
+                                }
                                 model.clearFaceCache()
-                                coordinator.start(store: model.store,
-                                                  limit: scanLimit,
-                                                  scope: .allPhotos)
+                                startScan(limit: scanLimit, scope: .allPhotos)
                             }
                             Button("取消", role: .cancel) {}
                         } message: {
@@ -129,11 +140,9 @@ struct ScanView: View {
                                             isPresented: $showAlbumRescanConfirm,
                                             titleVisibility: .visible) {
                             Button("开始重新识别") {
-                                model.prepareAlbumPhotoRerecognition()
-                                // 刻意不设数量上限：要一次把**所有相簿**的照片重新识别完
-                                coordinator.start(store: model.store,
-                                                  limit: .max,
-                                                  scope: .albumPhotos)
+                                // 刻意不设数量上限：一次把**所有相簿**的照片重新识别完。
+                                // 清旧样本由扫描计划内部完成（原子），这里不做破坏性准备。
+                                startScan(limit: .max, scope: .albumPhotos)
                             }
                             Button("取消", role: .cancel) {}
                         } message: {
@@ -184,6 +193,14 @@ struct ScanView: View {
             Divider()
 
             libraryStructure
+        }
+    }
+
+    /// 启动一次扫描。起不来（已有任务在跑 / 暂停中）就提示，而不是静默失败 ——
+    /// 界面上的破坏性准备（清空缓存等）都必须在 `coordinator.canStartScan` 为真时才做。
+    private func startScan(limit: Int, scope: ScanCoordinator.Scope) {
+        if !coordinator.start(store: model.store, limit: limit, scope: scope) {
+            showScanBusyAlert = true
         }
     }
 

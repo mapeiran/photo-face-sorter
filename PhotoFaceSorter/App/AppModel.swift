@@ -497,29 +497,6 @@ final class AppModel: ObservableObject {
         reload()
     }
 
-    /// 「重新识别相簿内照片」的准备：把**所有相簿**（含系统 / 同步相簿）里照片的
-    /// 人脸样本与扫描记录清掉，之后带 `.albumPhotos` 范围的扫描就会把它们当成
-    /// 未扫描重新识别（扫描只读相簿，**不改任何相簿内容**）。
-    ///
-    /// 注意：识别方式变更（`embeddingStatus == .needsFullRescan`）时**不要**用它 ——
-    /// 那样散图仍是旧特征，和新特征混在一起聚类。那种情况要用「全量重扫」。
-    /// - Returns: 需要重新识别的照片数（0 表示没有）
-    @discardableResult
-    func prepareAlbumPhotoRerecognition() -> Int {
-        let library = PhotoLibraryService.shared
-        let albumAssetIDs = library.albumPhotoAssetIdentifiers()
-        guard !albumAssetIDs.isEmpty else { return 0 }
-
-        // 先丢掉旧特征，避免同一张脸重复入库 / 新旧特征混在一起
-        persistSamples(samples.filter { !albumAssetIDs.contains($0.assetLocalIdentifier) })
-
-        var records = store.records
-        for id in albumAssetIDs { records.removeValue(forKey: id) }
-        store.records = records
-        reload()
-        return albumAssetIDs.count
-    }
-
     func clearLogs() {
         store.clearLogs()
         reload()

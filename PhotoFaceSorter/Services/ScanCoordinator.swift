@@ -29,6 +29,12 @@ final class ScanCoordinator: ObservableObject {
     /// 本次扫描覆盖哪些照片（定义见 `ScanScope`）
     typealias Scope = ScanScope
 
+    /// 现在能不能启动一次新扫描。
+    ///
+    /// 界面在「清空缓存」这类**破坏性准备**之前必须先问它 ——
+    /// 否则会出现「数据已经清掉、扫描却没启动」的静默丢结果。
+    var canStartScan: Bool { state == .idle || state == .finished }
+
     @Published var state: State = .idle
     @Published var total = 0
     @Published var scanned = 0
@@ -75,13 +81,19 @@ final class ScanCoordinator: ObservableObject {
 
     // MARK: - 控制
 
-    func start(store: CacheStore, limit: Int = .max, scope: Scope = .loosePhotos) {
-        // 只允许从「空闲/已完成」启动；否则会与仍在运行的（或已暂停的）任务并发
-        guard state == .idle || state == .finished else { return }
+    /// 启动一次扫描。
+    /// - Returns: 是否真的启动了。已有扫描在跑（或暂停）时返回 `false`，
+    ///   调用方要据此提示用户，而不是默默什么都不做。
+    @discardableResult
+    func start(store: CacheStore, limit: Int = .max, scope: Scope = .loosePhotos) -> Bool {
+        // 只允许从「空闲/已完成」启动；否则会与仍在运行的（或已暂停的）任务并发。
+        // 一次只跑一个扫描任务 —— 全量扫描、增量扫描、重新识别互不并行、互不干扰。
+        guard canStartScan else { return false }
         state = .scanning
         paused = false
         stopped = false
         runTask = Task { await run(store: store, limit: limit, scope: scope) }
+        return true
     }
 
     /// 等待当前扫描任务结束。
@@ -189,8 +201,12 @@ final class ScanCoordinator: ObservableObject {
         let (pending, remaining) = ScanBatchPolicy.batch(candidates, limit: limit)
 
         var samples = store.samples
-        // 重扫的照片先丢弃旧的人脸样本，否则同一张脸会重复入库
-        let rescanIDs = Set(pending.map { $0.localIdentifier })
+        // 重扫的照片先丢弃旧的人脸样本，否则同一张脸会重复入库。
+        // 「主动重新识别」范围下要丢掉**全部**范围内照片的旧样本（不只是本批）：
+        // 万一本轮被单次上限截断，未扫到的那些还留着旧特征，新旧混在一起聚类就废了。
+        let rescanIDs = scope.forcesRescan
+            ? Set(candidates.map { $0.localIdentifier })
+            : Set(pending.map { $0.localIdentifier })
         if !rescanIDs.isEmpty {
             samples.removeAll { rescanIDs.contains($0.assetLocalIdentifier) }
         }

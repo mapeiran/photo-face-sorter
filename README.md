@@ -138,15 +138,21 @@ PhotoFaceSorterTests/   逻辑层单元测试
   再由 `ScanPlanPolicy.shouldScan(…, scope:)` 按「范围 × 增量」挑人（纯函数、有单测）：
   - `.loosePhotos`（默认增量）：只扫散图 —— 重复扫描大相册时不必再对已整理好的照片跑一遍识别；
   - `.albumPhotos`：扫**所有相簿（含系统 / 同步相簿）里的照片** —— 扫描页的
-    「**重新识别相簿内照片**」用它，`AppModel.prepareAlbumPhotoRerecognition` 会先把这些照片的
-    旧样本与扫描记录清掉再重认，让「相簿优先」的人脸锚点跟上识别模型的变化。
-    注意范围用的是 `PhotoLibraryService.albumPhotoAssetIdentifiers()`（全部相簿），
-    **不是** `albumsExcludedFromScan()`（只有默认会跳过的那些）；而且这个动作
-    **不设单次数量上限**（`limit: .max`），一次把所有相簿的照片识别完；
+    「**重新识别相簿内照片**」用它，而且是**主动重扫**（`ScanScope.forcesRescan`：
+    忽略增量记录，扫过没改过的也重认一遍 —— 否则换了识别模型之后点它等于什么都没做）。
+    范围用的是 `PhotoLibraryService.albumPhotoAssetIdentifiers()`（**全部**相簿），
+    **不是** `albumsExcludedFromScan()`（只有默认会跳过的那些）；并且**不设单次数量上限**
+    （`limit: .max`），一次把所有相簿的照片识别完；
   - `.allPhotos`：「**全量重扫**」用它，清空缓存后连相簿内的照片一起重认。
   跳过**不会删掉这些照片已有的样本**：它们仍是「相簿优先」的锚点，
   新扫到的散图若和它们聚成一簇，会并入对应人物、显示在该相簿所属的文件夹里。
   **扫描 / 重认全程只读相簿，永远不会修改相簿内容。**
+
+  三个范围**互斥、不并行**：`ScanCoordinator.start` 只在「空闲 / 已完成」时启动，
+  返回 `false` 表示已有任务在跑（例如后台自动扫描），界面会明确提示而不是静默失败。
+  破坏性准备一律放在确认能启动**之后**、或扫描计划**内部**完成
+  （`ScanCoordinator.canStartScan` + `buildPlan` 里丢旧样本），
+  避免出现「数据已经清掉、扫描却没跑起来」这种静默丢结果。
 
 - **手动决定每个相簿是否参与扫描**：相簿结构里的每一行**长按**，或进
   `AlbumDetailView` 右上角，都能切换「从扫描中排除 / 取消排除，参与扫描」；

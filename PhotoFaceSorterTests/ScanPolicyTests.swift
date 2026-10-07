@@ -193,6 +193,24 @@ final class ScanPolicyTests: XCTestCase {
         }
     }
 
+    /// 「重新识别相簿内照片」是**主动**重扫：扫过、没改过的相簿内照片也要重认一遍
+    /// （否则换了识别模型之后点它等于什么都没做）
+    func testAlbumScopeForcesRescanEvenWhenRecordIsFresh() {
+        let record = AssetRecord(assetLocalIdentifier: "a",
+                                 scannedAt: Date(),
+                                 faceCount: 2,
+                                 modificationDate: modified)
+        XCTAssertTrue(ScanPlanPolicy.shouldScan(assetLocalIdentifier: "a",
+                                                modificationDate: modified,
+                                                isInAlbum: true,
+                                                scope: .albumPhotos,
+                                                records: ["a": record]),
+                      "相簿范围内必须忽略增量记录，强制重新识别")
+        XCTAssertTrue(ScanScope.albumPhotos.forcesRescan)
+        XCTAssertFalse(ScanScope.loosePhotos.forcesRescan)
+        XCTAssertFalse(ScanScope.allPhotos.forcesRescan)
+    }
+
     /// 增量语义在任何范围下都保留：扫过且没改过的不再重复扫
     func testShouldScanStillSkipsScannedUnchangedPhoto() {
         let record = AssetRecord(assetLocalIdentifier: "a",
