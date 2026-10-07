@@ -384,6 +384,29 @@ final class AppModel: ObservableObject {
         return await exportAssetsToAlbum(assetIDs, albumName: person.displayName, action: action)
     }
 
+    /// 从系统相册**删除**照片（移到「最近删除」，30 天内可恢复），
+    /// 同时清掉这些人脸样本与扫描记录，避免留下指向已删照片的脏数据。
+    func deletePhotosFromLibrary(_ assetIDs: [String]) async -> AlbumExportOutcome {
+        guard !assetIDs.isEmpty else {
+            return AlbumExportOutcome(message: "没有可删除的照片。", succeeded: false)
+        }
+        do {
+            try await PhotoLibraryService.shared.deleteAssets(localIdentifiers: assetIDs)
+            let removing = Set(assetIDs)
+            persistSamples(samples.filter { !removing.contains($0.assetLocalIdentifier) })
+            var records = store.records
+            for id in removing { records.removeValue(forKey: id) }
+            store.records = records
+            // 通知「归类审核」等页面刷新
+            NotificationCenter.default.post(name: .albumExportDidFinish, object: nil)
+            return AlbumExportOutcome(
+                message: "已删除 \(assetIDs.count) 张照片（在系统「最近删除」里 30 天内可恢复）。",
+                succeeded: true)
+        } catch {
+            return AlbumExportOutcome(message: "删除失败：\(error.localizedDescription)", succeeded: false)
+        }
+    }
+
     /// 把单张（或几张）照片**移动**到指定系统相簿。
     /// 会从其它相簿移除（原图不删除），并记一条执行日志（可回退）。
     func moveAssetsToAlbum(_ assetIDs: [String], albumName: String) async -> AlbumExportOutcome {

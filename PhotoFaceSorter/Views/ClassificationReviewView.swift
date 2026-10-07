@@ -9,6 +9,12 @@ final class ClassificationReviewModel: ObservableObject {
     @Published private(set) var didLoad = false
     /// personID -> 勾选的照片
     @Published private(set) var selection: [UUID: Set<String>] = [:]
+    /// 被跳过的分组：持久化，跳过后不再展示（可在工具栏恢复）
+    @Published private(set) var skippedPersonIDs: Set<UUID> = []
+
+    init() {
+        skippedPersonIDs = ClassificationSkipStore.load()
+    }
 
     func reload(people: [Person], samples: [FaceSample]) async {
         isLoading = true
@@ -25,10 +31,12 @@ final class ClassificationReviewModel: ObservableObject {
                                                           existingAlbumTitles: titles)
         }.value
 
-        items = loaded
+        // 跳过过的分组不再展示
+        let visible = loaded.filter { !skippedPersonIDs.contains($0.personID) }
+        items = visible
         // 保留用户已手动取消的勾选；新出现的分组默认全选
         var merged: [UUID: Set<String>] = [:]
-        for item in loaded {
+        for item in visible {
             if let existing = selection[item.personID] {
                 merged[item.personID] = existing.intersection(item.assetIDs)
             } else {
@@ -92,6 +100,20 @@ final class ClassificationReviewModel: ObservableObject {
         items.removeAll { $0.personID == personID }
         selection.removeValue(forKey: personID)
     }
+
+    /// 跳过这一组：记下来，之后不再展示（可在工具栏「恢复已跳过」里找回）。
+    func skip(_ personID: UUID) {
+        skippedPersonIDs.insert(personID)
+        ClassificationSkipStore.save(skippedPersonIDs)
+        remove(personID)
+    }
+
+    /// 恢复所有被跳过的分组。
+    func restoreSkipped() {
+        guard !skippedPersonIDs.isEmpty else { return }
+        skippedPersonIDs.removeAll()
+        ClassificationSkipStore.save([])
+    }
 }
 
 /// 归类审核：AI 把散图识别成人物后，由你逐组确认写到哪本系统相簿。
@@ -140,6 +162,15 @@ struct ClassificationReviewView: View {
             }
             .navigationTitle("归类审核")
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    if !review.skippedPersonIDs.isEmpty {
+                        Button("恢复已跳过") {
+                            review.restoreSkipped()
+                            Task { await reload() }
+                        }
+                        .font(.footnote)
+                    }
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button { Task { await reload() } } label: {
                         Image(systemName: "arrow.clockwise")
@@ -300,7 +331,7 @@ struct ClassificationReviewView: View {
                     .buttonStyle(.bordered)
                     .disabled(selectedCount == 0 || busyPersonID != nil)
                 Spacer()
-                Button("跳过") { review.remove(item.personID) }
+                Button("跳过") { review.skip(item.personID) }
                     .buttonStyle(.bordered)
                     .disabled(busyPersonID != nil)
             }
@@ -363,6 +394,8 @@ struct ProposalPhotosView: View {
     @State private var message: String?
     /// 选好照片后点「移动加入」，先选目标系统相簿
     @State private var showMoveAlbumPicker = false
+    /// 删除选中的照片（移到系统「最近删除」）
+    @State private var showDeleteConfirm = false
 
     private struct Preview: Identifiable {
         let id = UUID()
@@ -428,13 +461,26 @@ struct ProposalPhotosView: View {
                     .disabled(selectedCount == 0 || busy)
 
                     Spacer()
+                }
+                .font(.footnote)
 
-                    Button("跳过") {
-                        review.remove(personID)
+                HStack(spacing: 12) {
+                    Button(role: .destructive) {
+                        showDeleteConfirm = true
+                    } label: {
+                        Label("删除所选", systemImage: "trash")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(selectedCount == 0 || busy)
+
+                    Button("跳过这组") {
+                        review.skip(personID)
                         dismiss()
                     }
                     .buttonStyle(.bordered)
                     .disabled(busy)
+
+                    Spacer()
                 }
                 .font(.footnote)
             }
@@ -446,6 +492,14 @@ struct ProposalPhotosView: View {
                 // 选中的照片移到指定的系统相簿（可以是已有相簿，也可以是新建的）
                 run(.move, to: targetAlbum)
             }
+        }
+        .confirmationDialog("删除选中的 \(selectedCount) 张照片？",
+                            isPresented: $showDeleteConfirm,
+                            titleVisibility: .visible) {
+            Button("删除", role: .destructive) { deleteSelected() }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("会把它们移到系统「最近删除」，30 天内可恢复；App 里对应的人脸样本也会一起清掉。")
         }
         .alert("完成",
                isPresented: Binding(get: { message != nil },
@@ -459,6 +513,19 @@ struct ProposalPhotosView: View {
         }
         .fullScreenCover(item: $preview) { preview in
             PhotoViewerView(assetIdentifiers: assetIDs, initialIndex: preview.index)
+        }
+    }
+
+    /// 删除当前勾选的照片（移到系统「最近删除」）
+    private func deleteSelected() {
+        let ids = assetIDs.filter { review.isSelected($0, in: personID) }
+        guard !ids.isEmpty else { return }
+        busy = true
+        Task {
+            let result = await model.deletePhotosFromLibrary(ids)
+            review.removeAssets(ids, for: personID)
+            busy = false
+            message = result.message
         }
     }
 

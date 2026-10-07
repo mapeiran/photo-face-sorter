@@ -27,6 +27,8 @@ struct PhotoViewerView: View {
     @State private var showMove = false
     @State private var showDetail = false
     @State private var showAlbumPicker = false
+    /// 删除这张照片（移到系统「最近删除」）
+    @State private var showDeleteConfirm = false
     /// 移动成功后的短暂提示
     @State private var toast: String?
 
@@ -136,6 +138,10 @@ struct PhotoViewerView: View {
                                 Label("标记非人物", systemImage: "eye.slash")
                             }
                         }
+                        Divider()
+                        Button(role: .destructive) { showDeleteConfirm = true } label: {
+                            Label("删除这张照片", systemImage: "trash")
+                        }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
@@ -166,6 +172,26 @@ struct PhotoViewerView: View {
                 moveCurrent(to: albumName)
             }
         }
+        .confirmationDialog("删除这张照片？",
+                            isPresented: $showDeleteConfirm,
+                            titleVisibility: .visible) {
+            Button("删除", role: .destructive) { deleteCurrent() }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("会移到系统「最近删除」，30 天内可恢复；App 里对应的人脸样本也会一起清掉。")
+        }
+    }
+
+    /// 删除当前这张照片；成功后自动定位到下一张，最后一张则退出查看。
+    private func deleteCurrent() {
+        guard let currentIdentifier else { return }
+        let removedIndex = index
+        Task {
+            let outcome = await model.deletePhotosFromLibrary([currentIdentifier])
+            showToast(outcome.message)
+            guard outcome.succeeded else { return }
+            advance(afterRemovingAt: removedIndex)
+        }
     }
 
     /// 把当前这张照片移到选定的系统相簿；成功后自动定位到下一张，最后一张则退出查看。
@@ -176,12 +202,12 @@ struct PhotoViewerView: View {
             let outcome = await model.moveAssetsToAlbum([currentIdentifier], albumName: albumName)
             showToast(outcome.message)
             guard outcome.succeeded else { return }
-            advance(afterMoving: movedIndex)
+            advance(afterRemovingAt: movedIndex)
         }
     }
 
-    /// 移动后前进到下一张；已经是最后一张就关闭查看页、返回上一页。
-    private func advance(afterMoving movedIndex: Int) {
+    /// 移走 / 删掉当前这张后前进到下一张；已经是最后一张就关闭查看页、返回上一页。
+    private func advance(afterRemovingAt movedIndex: Int) {
         if movedIndex >= count - 1 {
             dismiss()
         } else {

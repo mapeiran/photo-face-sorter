@@ -388,6 +388,16 @@ final class PhotoLibraryService: Sendable {
         }
     }
 
+    /// 从系统相册删除照片（进入「最近删除」，30 天内可恢复）。
+    func deleteAssets(localIdentifiers ids: [String]) async throws {
+        guard !ids.isEmpty else { return }
+        let assets = fetchAssets(localIdentifiers: ids)
+        guard !assets.isEmpty else { return }
+        try await PHPhotoLibrary.shared().performChanges {
+            PHAssetChangeRequest.deleteAssets(assets as NSArray)
+        }
+    }
+
     // MARK: - 图像
 
     /// 按目标尺寸取图（缩略图请走 `ThumbnailCache`，它带缓存与像素尺寸换算）
