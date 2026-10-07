@@ -8,6 +8,7 @@ struct ScanView: View {
     @State private var authorized = false
 
     @State private var showFullRescanConfirm = false
+    @State private var showAlbumRescanConfirm = false
     /// 扫描页相簿结构里被展开的文件夹（默认折叠）
     @State private var expandedFolders: Set<String> = []
 
@@ -58,7 +59,7 @@ struct ScanView: View {
             if needsFullRescan {
                 Text("识别方式已更新：现有的 \(model.samples.count) 个人脸特征与新版不兼容，"
                      + "继续聚类会得到错误的分组。请用下面的「全量重扫」重新识别"
-                     + "（注意：人物命名会被重置）。")
+                     + "（它会连相簿内的照片一起重认；注意人物命名会被重置）。")
                     .font(.footnote)
                     .foregroundColor(.orange)
                     .multilineTextAlignment(.center)
@@ -107,11 +108,37 @@ struct ScanView: View {
                                             titleVisibility: .visible) {
                             Button("清空并重扫", role: .destructive) {
                                 model.clearFaceCache()
-                                coordinator.start(store: model.store, limit: scanLimit)
+                                coordinator.start(store: model.store,
+                                                  limit: scanLimit,
+                                                  scope: .allPhotos)
                             }
                             Button("取消", role: .cancel) {}
                         } message: {
-                            Text("所有人脸样本与人物分组（含已命名的人物）都会被删除并重新识别，此操作无法撤销。")
+                            Text("所有人脸样本与人物分组（含已命名的人物）都会被删除，"
+                                 + "并重新识别全部照片（含相簿内的），此操作无法撤销。")
+                        }
+
+                        // 相簿内照片默认不参与识别（视为已归类）。换了识别方式、或在「照片」里
+                        // 新整理过相簿之后，用这个按钮把它们的脸重新认一遍，人物命名才有依据。
+                        Button("重新识别相簿内照片") {
+                            showAlbumRescanConfirm = true
+                        }
+                        .font(.footnote)
+                        .disabled(needsFullRescan)
+                        .confirmationDialog("重新识别相簿内的照片？",
+                                            isPresented: $showAlbumRescanConfirm,
+                                            titleVisibility: .visible) {
+                            Button("开始重新识别") {
+                                model.prepareAlbumPhotoRerecognition()
+                                coordinator.start(store: model.store,
+                                                  limit: scanLimit,
+                                                  scope: .albumPhotos)
+                            }
+                            Button("取消", role: .cancel) {}
+                        } message: {
+                            Text("会丢弃相簿内照片的旧人脸特征并重新识别，让「按相簿给人物命名」"
+                                 + "重新有据可依。只读相簿，不会修改任何相簿内容。"
+                                 + "相簿内现有 \(coordinator.albumPhotoCount) 张照片。")
                         }
                     }
                 }
@@ -123,7 +150,8 @@ struct ScanView: View {
                 .multilineTextAlignment(.center)
 
             if coordinator.state == .finished && coordinator.total == 0 {
-                Text("没有待扫描的照片（散图都已扫描；其余照片已在相簿中，或被排除相簿过滤/未授权）")
+                Text("没有待扫描的照片（散图都已扫描；相簿内的照片默认不参与识别，"
+                     + "要用「重新识别相簿内照片」；也可能被排除相簿过滤或未授权）")
                     .font(.footnote)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
@@ -184,7 +212,8 @@ struct ScanView: View {
                 .font(.footnote)
             }
 
-            Text("相簿内 \(coordinator.albumPhotoCount) 张（扫描时跳过识别）"
+            Text("相簿内 \(coordinator.albumPhotoCount) 张（默认跳过识别，可用上面的"
+                 + "「重新识别相簿内照片」单独识别）"
                  + " · 不在相簿中的散图 \(coordinator.loosePhotoCount) 张（会被识别）")
                 .font(.footnote)
                 .foregroundColor(.secondary)

@@ -26,6 +26,9 @@ final class ScanCoordinator: ObservableObject {
         }
     }
 
+    /// 本次扫描覆盖哪些照片（定义见 `ScanScope`）
+    typealias Scope = ScanScope
+
     @Published var state: State = .idle
     @Published var total = 0
     @Published var scanned = 0
@@ -70,13 +73,13 @@ final class ScanCoordinator: ObservableObject {
 
     // MARK: - 控制
 
-    func start(store: CacheStore, limit: Int = .max) {
+    func start(store: CacheStore, limit: Int = .max, scope: Scope = .loosePhotos) {
         // 只允许从「空闲/已完成」启动；否则会与仍在运行的（或已暂停的）任务并发
         guard state == .idle || state == .finished else { return }
         state = .scanning
         paused = false
         stopped = false
-        runTask = Task { await run(store: store, limit: limit) }
+        runTask = Task { await run(store: store, limit: limit, scope: scope) }
     }
 
     /// 等待当前扫描任务结束。
@@ -134,23 +137,26 @@ final class ScanCoordinator: ObservableObject {
     }
 
     /// 枚举相册、解码缓存、算出待扫描照片 —— 全部在后台线程完成
-    private nonisolated func prepare(store: CacheStore, limit: Int) async -> ScanPlan {
+    private nonisolated func prepare(store: CacheStore, limit: Int, scope: Scope) async -> ScanPlan {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
-                continuation.resume(returning: Self.buildPlan(store: store, limit: limit))
+                continuation.resume(returning: Self.buildPlan(store: store, limit: limit, scope: scope))
             }
         }
     }
 
-    private nonisolated static func buildPlan(store: CacheStore, limit: Int) -> ScanPlan {
+    private nonisolated static func buildPlan(store: CacheStore,
+                                              limit: Int,
+                                              scope: Scope) -> ScanPlan {
         let library = PhotoLibraryService.shared
 
         let assets = library.fetchAllPhotoAssets()
         var records = store.records
 
         // 排除相簿：显式排除的 + 默认跳过的自定义相簿（可在相簿详情里手动取消排除）。
-        // 这些照片视为已归类，扫描只处理剩下的散图；只跳扫描，不动已有样本 ——
-        // 它们仍是按相簿命名的锚点。
+        // 默认扫描（`loosePhotos`）把这里的照片视为已归类、跳过不扫；
+        // 但「重新识别相簿内照片」/「全量重扫」会主动扫它们 —— 人脸样本要能跟上模型变化，
+        // 相簿里的照片同样是「按相簿命名」的锚点。扫描只读相簿，不会修改任何相簿内容。
         let skippedAssetIDs = library.fetchAssetIdentifiers(in: library.albumsExcludedFromScan())
 
         // 清理已从相册删除的照片记录，避免 records.json 无限增长。
@@ -162,13 +168,14 @@ final class ScanCoordinator: ObservableObject {
             for id in staleIDs { records.removeValue(forKey: id) }
         }
 
-        // 增量范围：从未扫描过的 + 内容被修改过（modificationDate 变化）的照片；
-        // 被排除相簿和已在自定义相簿里的照片都跳过。
+        // 增量范围：从未扫描过的 + 内容被修改过（modificationDate 变化）的照片。
+        // 具体扫哪些由 scope 决定：散图 / 相簿内 / 全部。
         let candidates = assets.filter { asset in
-            ScanPlanPolicy.needsScan(assetLocalIdentifier: asset.localIdentifier,
-                                     modificationDate: asset.modificationDate,
-                                     isExcluded: skippedAssetIDs.contains(asset.localIdentifier),
-                                     records: records)
+            ScanPlanPolicy.shouldScan(assetLocalIdentifier: asset.localIdentifier,
+                                      modificationDate: asset.modificationDate,
+                                      isInAlbum: skippedAssetIDs.contains(asset.localIdentifier),
+                                      scope: scope,
+                                      records: records)
         }
         // 单次上限：大相册分批扫，避免长时间占用设备/看起来像卡死。
         // 上限换算与兜底（绝不返回 0/负数）在 ScanBatchPolicy 里：prefix 收到负数会崩溃。
@@ -200,8 +207,8 @@ final class ScanCoordinator: ObservableObject {
 
     // MARK: - 扫描
 
-    private func run(store: CacheStore, limit: Int) async {
-        let plan = await prepare(store: store, limit: limit)
+    private func run(store: CacheStore, limit: Int, scope: Scope) async {
+        let plan = await prepare(store: store, limit: limit, scope: scope)
         let pending = plan.pending
         var records = plan.records
         var samples = plan.samples

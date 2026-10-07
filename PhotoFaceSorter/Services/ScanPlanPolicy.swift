@@ -4,6 +4,25 @@ import Foundation
 ///
 /// 与 `ScanRecordPolicy` 配合构成完整闭环：
 /// 取不到图片时不写记录 → 这里下次仍判定为「需要扫描」，于是自动重试。
+/// 一次扫描覆盖哪些照片。
+enum ScanScope: Sendable {
+    /// 默认增量：只扫**不在相簿里**的散图
+    case loosePhotos
+    /// 只扫**相簿内**的照片（重新识别，刷新「按相簿命名」的人脸锚点）
+    case albumPhotos
+    /// 全部照片：散图 + 相簿内（「全量重扫」用）
+    case allPhotos
+
+    /// 这张照片是否落在本次范围内（只看「在不在相簿里」）
+    func contains(isInAlbum: Bool) -> Bool {
+        switch self {
+        case .loosePhotos: return !isInAlbum
+        case .albumPhotos: return isInAlbum
+        case .allPhotos:   return true
+        }
+    }
+}
+
 enum ScanPlanPolicy {
 
     /// 这张照片是否需要扫描。
@@ -20,5 +39,22 @@ enum ScanPlanPolicy {
         guard let record = records[assetLocalIdentifier] else { return true }
         // 新增的会走到上面；这里覆盖「内容被修改过」的照片
         return record.modificationDate != modificationDate
+    }
+
+    /// 「本次范围」× 「增量判定」的合并判断。
+    ///
+    /// 注意 `isExcluded` 的语义：相簿内的照片在默认范围下算「已归类、跳过」，
+    /// 但在 `.albumPhotos` / `.allPhotos` 范围下是被**主动要求**重新识别的，
+    /// 不能再按排除处理，否则会出现「选了重新识别却一张都不扫」。
+    static func shouldScan(assetLocalIdentifier: String,
+                           modificationDate: Date?,
+                           isInAlbum: Bool,
+                           scope: ScanScope,
+                           records: [String: AssetRecord]) -> Bool {
+        guard scope.contains(isInAlbum: isInAlbum) else { return false }
+        return needsScan(assetLocalIdentifier: assetLocalIdentifier,
+                         modificationDate: modificationDate,
+                         isExcluded: isInAlbum && scope == .loosePhotos,
+                         records: records)
     }
 }
