@@ -230,12 +230,18 @@ struct ScanView: View {
                 .font(.footnote)
             }
 
-            Text("默认跳过的相簿内 \(coordinator.albumPhotoCount) 张"
-                 + "（全部相簿共 \(coordinator.allAlbumPhotoCount) 张，可用上面的"
-                 + "「重新识别相簿内照片」一次性重新识别）"
-                 + " · 不在相簿中的散图 \(coordinator.loosePhotoCount) 张（会被识别）")
-                .font(.footnote)
-                .foregroundColor(.secondary)
+            // 三个动作**各自**会识别多少张，必须分开写清楚。
+            // 之前只标了「散图会被识别」，而「全量重扫」现在连相簿内的照片一起扫，
+            // 于是按散图数量选了 1000 上限、实际却扫了 1000 —— 看起来像没按实际数量扫。
+            VStack(alignment: .leading, spacing: 2) {
+                Text("照片总数 \(totalPhotoCount) 张")
+                Text("· 增量扫描：「开始扫描（增量）」只识别散图 \(coordinator.loosePhotoCount) 张"
+                     + "（其余 \(coordinator.albumPhotoCount) 张在默认跳过的相簿里）")
+                Text("· 全量重扫：「清空并重扫」识别全部 \(totalPhotoCount) 张（含相簿内照片）")
+                Text("· 重新识别：「重新识别相簿内照片」识别所有相簿内的 \(coordinator.allAlbumPhotoCount) 张")
+            }
+            .font(.footnote)
+            .foregroundColor(.secondary)
 
             if model.folderStructure.folderOrder.isEmpty
                 && model.folderStructure.ungroupedAlbumTitles.isEmpty {
@@ -355,6 +361,12 @@ struct ScanView: View {
         ScanBatchPolicy.limit(setting: model.maxPhotosPerScan)
     }
 
+    /// 相册里的照片总数。默认跳过的相簿内 + 散图 = 全部（见 `LibraryPhotoCountPolicy`），
+    /// 也就是「全量重扫」实际会识别的张数。
+    private var totalPhotoCount: Int {
+        coordinator.albumPhotoCount + coordinator.loosePhotoCount
+    }
+
     /// 扫描前就能改：大相册先设个上限，避免一次跑太久像卡死。
     private var scanLimitPicker: some View {
         HStack {
@@ -379,7 +391,8 @@ struct ScanView: View {
         if limit == Int.max {
             return "当前不限制单次扫描数量。相册很大时建议设个上限，扫完一批自动结束、进度已保存。"
         }
-        return "一次最多扫描 \(limit) 张，扫完自动结束（进度已保存），可再次点「开始扫描」接着扫。"
+        return "单次最多扫描 \(limit) 张。这只是上限：实际待识别不足 \(limit) 张时只扫实际数量。"
+             + "扫完自动结束（进度已保存），可再次点「开始扫描」接着扫。"
     }
 
     private func stat(_ title: String, _ value: String) -> some View {        VStack(spacing: 4) {

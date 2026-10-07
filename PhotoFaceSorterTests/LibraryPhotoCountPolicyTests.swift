@@ -42,6 +42,17 @@ final class LibraryPhotoCountPolicyTests: XCTestCase {
         XCTAssertEqual(counts.loosePhotos, 2)
     }
 
+    /// 界面上「照片总数」用的是 albumPhotos + loosePhotos，必须等于全部照片数 ——
+    /// 「全量重扫会识别全部 T 张」这句依赖这个恒等式。
+    func testAlbumPlusLooseEqualsAllPhotos() {
+        let all: Set<String> = ["a", "b", "c", "d"]
+        let counts = LibraryPhotoCountPolicy.counts(allAssetIDs: all,
+                                                    albumAssetIDs: ["a", "b"],
+                                                    excludedAssetIDs: [],
+                                                    allAlbumAssetIDs: ["a", "b", "c"])
+        XCTAssertEqual(counts.albumPhotos + counts.loosePhotos, all.count)
+    }
+
     func testEmptyLibrary() {
         let counts = LibraryPhotoCountPolicy.counts(allAssetIDs: [],
                                                     albumAssetIDs: [],
