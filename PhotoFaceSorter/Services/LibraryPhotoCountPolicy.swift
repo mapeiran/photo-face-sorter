@@ -10,13 +10,18 @@ import Foundation
 /// 纯函数，便于单测。
 enum LibraryPhotoCountPolicy {
 
+    /// - Parameter allAlbumAssetIDs: **所有**相簿（含系统 / 同步相簿）里的照片，
+    ///   只用于「重新识别相簿内照片」的说明文案，不参与散图拆分。
     static func counts(allAssetIDs: Set<String>,
                        albumAssetIDs: Set<String>,
-                       excludedAssetIDs: Set<String>) -> LibraryPhotoCounts {
+                       excludedAssetIDs: Set<String>,
+                       allAlbumAssetIDs: Set<String> = []) -> LibraryPhotoCounts {
         let loose = allAssetIDs
             .subtracting(albumAssetIDs)
             .subtracting(excludedAssetIDs)
             .count
-        return LibraryPhotoCounts(albumPhotos: albumAssetIDs.count, loosePhotos: loose)
+        return LibraryPhotoCounts(albumPhotos: albumAssetIDs.count,
+                                  loosePhotos: loose,
+                                  allAlbumPhotos: allAlbumAssetIDs.count)
     }
 }

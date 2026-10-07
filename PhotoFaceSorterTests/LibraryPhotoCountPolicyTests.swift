@@ -30,6 +30,18 @@ final class LibraryPhotoCountPolicyTests: XCTestCase {
         XCTAssertEqual(counts.loosePhotos, 0, "被排除的照片不能算成散图")
     }
 
+    /// 「所有相簿（含系统 / 同步相簿）」与「默认扫描会跳过的相簿」是两个不同的数：
+    /// 前者是「重新识别相簿内照片」的范围，后者只是默认扫描的范围。
+    func testAllAlbumCountIsReportedSeparately() {
+        let counts = LibraryPhotoCountPolicy.counts(allAssetIDs: ["a", "b", "c"],
+                                                    albumAssetIDs: ["a"],
+                                                    excludedAssetIDs: [],
+                                                    allAlbumAssetIDs: ["a", "b"])
+        XCTAssertEqual(counts.albumPhotos, 1, "默认会跳过的相簿计数")
+        XCTAssertEqual(counts.allAlbumPhotos, 2, "所有相簿（含系统相簿）的计数")
+        XCTAssertEqual(counts.loosePhotos, 2)
+    }
+
     func testEmptyLibrary() {
         let counts = LibraryPhotoCountPolicy.counts(allAssetIDs: [],
                                                     albumAssetIDs: [],

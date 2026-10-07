@@ -45,6 +45,8 @@ final class ScanCoordinator: ObservableObject {
     @Published private(set) var albumPhotoCount = 0
     /// 不在任何相簿中、会被识别的散图数。
     @Published private(set) var loosePhotoCount = 0
+    /// **所有**相簿（含系统 / 同步相簿）里的照片数，用于「重新识别相簿内照片」。
+    @Published private(set) var allAlbumPhotoCount = 0
 
     // 这些服务都无状态且 Sendable，标记 nonisolated 以便在后台线程上使用
     private nonisolated let detector = FaceDetectionService()
@@ -119,6 +121,7 @@ final class ScanCoordinator: ObservableObject {
             guard !Task.isCancelled else { return }
             albumPhotoCount = counts.albumPhotos
             loosePhotoCount = counts.loosePhotos
+            allAlbumPhotoCount = counts.allAlbumPhotos
         }
     }
 
@@ -153,11 +156,15 @@ final class ScanCoordinator: ObservableObject {
         let assets = library.fetchAllPhotoAssets()
         var records = store.records
 
-        // 排除相簿：显式排除的 + 默认跳过的自定义相簿（可在相簿详情里手动取消排除）。
-        // 默认扫描（`loosePhotos`）把这里的照片视为已归类、跳过不扫；
-        // 但「重新识别相簿内照片」/「全量重扫」会主动扫它们 —— 人脸样本要能跟上模型变化，
-        // 相簿里的照片同样是「按相簿命名」的锚点。扫描只读相簿，不会修改任何相簿内容。
+        // 两个「在相簿里」的集合语义**不同**，不要混用：
+        // - skippedAssetIDs：默认扫描会**跳过**的相簿（自定义 + 显式排除，可手动取消排除）。
+        //   默认扫描（`loosePhotos`）把它们视为已归类。
+        // - albumAssetIDs：**所有**相簿（含系统 / 同步相簿）。
+        //   「重新识别相簿内照片」要求覆盖**全部**相簿，而不是只覆盖默认会跳过的那些。
+        // 扫描只读相簿，不会修改任何相簿内容。
         let skippedAssetIDs = library.fetchAssetIdentifiers(in: library.albumsExcludedFromScan())
+        let albumAssetIDs = scope == .loosePhotos ? skippedAssetIDs
+                                                   : library.albumPhotoAssetIdentifiers()
 
         // 清理已从相册删除的照片记录，避免 records.json 无限增长。
         // 仅在「完全访问」下执行：受限访问时 fetch 只返回用户挑选的照片，
@@ -173,7 +180,7 @@ final class ScanCoordinator: ObservableObject {
         let candidates = assets.filter { asset in
             ScanPlanPolicy.shouldScan(assetLocalIdentifier: asset.localIdentifier,
                                       modificationDate: asset.modificationDate,
-                                      isInAlbum: skippedAssetIDs.contains(asset.localIdentifier),
+                                      isInAlbum: albumAssetIDs.contains(asset.localIdentifier),
                                       scope: scope,
                                       records: records)
         }

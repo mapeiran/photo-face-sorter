@@ -137,9 +137,12 @@ PhotoFaceSorterTests/   逻辑层单元测试
   `ScanCoordinator.buildPlan` 用 `PhotoLibraryService.albumsExcludedFromScan()` 算出这些照片，
   再由 `ScanPlanPolicy.shouldScan(…, scope:)` 按「范围 × 增量」挑人（纯函数、有单测）：
   - `.loosePhotos`（默认增量）：只扫散图 —— 重复扫描大相册时不必再对已整理好的照片跑一遍识别；
-  - `.albumPhotos`：只扫**相簿内**照片 —— 扫描页的「**重新识别相簿内照片**」用它，
-    会先清掉这些照片的旧样本与扫描记录（`AppModel.prepareAlbumPhotoRerecognition`）再重认，
-    让「相簿优先」的人脸锚点跟上识别模型的变化；
+  - `.albumPhotos`：扫**所有相簿（含系统 / 同步相簿）里的照片** —— 扫描页的
+    「**重新识别相簿内照片**」用它，`AppModel.prepareAlbumPhotoRerecognition` 会先把这些照片的
+    旧样本与扫描记录清掉再重认，让「相簿优先」的人脸锚点跟上识别模型的变化。
+    注意范围用的是 `PhotoLibraryService.albumPhotoAssetIdentifiers()`（全部相簿），
+    **不是** `albumsExcludedFromScan()`（只有默认会跳过的那些）；而且这个动作
+    **不设单次数量上限**（`limit: .max`），一次把所有相簿的照片识别完；
   - `.allPhotos`：「**全量重扫**」用它，清空缓存后连相簿内的照片一起重认。
   跳过**不会删掉这些照片已有的样本**：它们仍是「相簿优先」的锚点，
   新扫到的散图若和它们聚成一簇，会并入对应人物、显示在该相簿所属的文件夹里。
@@ -195,7 +198,7 @@ PhotoFaceSorterTests/   逻辑层单元测试
   当前系统的全部文件夹（`AppModel.folderStructure`），每个文件夹可展开列出其中的相簿
   （封面 + 张数），点相簿进 `AlbumDetailView` 看内部照片。
   同时用 `PhotoLibraryService.photoCounts()`（纯策略 `LibraryPhotoCountPolicy`）
-  展示「相簿内 N 张（默认跳过识别，可用「重新识别相簿内照片」单独识别）· 不在相簿中的散图 M 张（会被识别）」，
+  展示「默认跳过的相簿内 N 张（全部相簿共 K 张，可用「重新识别相簿内照片」一次性重新识别）· 不在相簿中的散图 M 张（会被识别）」，
   点右上角刷新可重新读取。计数与实际扫描共用 `albumsExcludedFromScan()`，口径一致。
   文件夹可逐个展开/折叠，也可一键「展开全部 / 折叠全部」。
 

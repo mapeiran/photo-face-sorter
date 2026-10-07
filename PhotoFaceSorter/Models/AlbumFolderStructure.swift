@@ -47,4 +47,7 @@ struct LibraryPhotoCounts: Equatable, Sendable {
     var albumPhotos: Int
     /// 不在任何相簿中、会被识别的散图数（被排除相簿的照片不算）
     var loosePhotos: Int
+    /// **所有**相簿（含系统 / 同步相簿）里的照片数。
+    /// 用于「重新识别相簿内照片」—— 它覆盖全部相簿，而不只是默认扫描会跳过的那些。
+    var allAlbumPhotos: Int = 0
 }

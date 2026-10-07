@@ -130,15 +130,16 @@ struct ScanView: View {
                                             titleVisibility: .visible) {
                             Button("开始重新识别") {
                                 model.prepareAlbumPhotoRerecognition()
+                                // 刻意不设数量上限：要一次把**所有相簿**的照片重新识别完
                                 coordinator.start(store: model.store,
-                                                  limit: scanLimit,
+                                                  limit: .max,
                                                   scope: .albumPhotos)
                             }
                             Button("取消", role: .cancel) {}
                         } message: {
-                            Text("会丢弃相簿内照片的旧人脸特征并重新识别，让「按相簿给人物命名」"
-                                 + "重新有据可依。只读相簿，不会修改任何相簿内容。"
-                                 + "相簿内现有 \(coordinator.albumPhotoCount) 张照片。")
+                            Text("会丢弃**所有相簿**（含系统相簿）里照片的旧人脸特征并重新识别，"
+                                 + "让「按相簿给人物命名」重新有据可依。只读相簿，不会修改任何相簿内容。"
+                                 + "共 \(coordinator.allAlbumPhotoCount) 张，本次不设数量上限。")
                         }
                     }
                 }
@@ -212,8 +213,9 @@ struct ScanView: View {
                 .font(.footnote)
             }
 
-            Text("相簿内 \(coordinator.albumPhotoCount) 张（默认跳过识别，可用上面的"
-                 + "「重新识别相簿内照片」单独识别）"
+            Text("默认跳过的相簿内 \(coordinator.albumPhotoCount) 张"
+                 + "（全部相簿共 \(coordinator.allAlbumPhotoCount) 张，可用上面的"
+                 + "「重新识别相簿内照片」一次性重新识别）"
                  + " · 不在相簿中的散图 \(coordinator.loosePhotoCount) 张（会被识别）")
                 .font(.footnote)
                 .foregroundColor(.secondary)
