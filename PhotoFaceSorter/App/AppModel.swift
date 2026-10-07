@@ -44,9 +44,9 @@ final class AppModel: ObservableObject {
     @AppStorage("autoScanEnabled") var autoScanEnabled: Bool = false
     /// 仅充电时后台扫描
     @AppStorage("chargeOnlyBackground") var chargeOnlyBackground: Bool = true
-    /// 聚类阈值（越小分组越细）。标定见 `ClusterThreshold`：
+    /// 聚类阈值（余弦距离，越小分组越细）。标定见 `ClusterThreshold`：
     /// 默认值必须和特征提取方式配套，换特征模型时要重新实测。
-    @AppStorage("clusterThreshold") var clusterThreshold: Double = ClusterThreshold.defaultValue
+    @AppStorage(ClusterThreshold.defaultsKey) var clusterThreshold: Double = ClusterThreshold.defaultValue
     /// 单次扫描的照片数量上限（0 = 不限制）。
     /// 大相册一次性扫完会长时间占用设备、界面像卡死，分批扫可随时停。
     @AppStorage(ScanBatchPolicy.defaultsKey) var maxPhotosPerScan: Int = ScanBatchPolicy.unlimited
@@ -56,10 +56,11 @@ final class AppModel: ObservableObject {
 
     /// 聚类规则版本。v1 = 旧的 0.5…1.5（默认 0.9），v2 = 新的 0.10…0.35（默认 0.25），
     /// v3 = 只用自定义相簿命名，v4 = 归类改为「相簿优先、AI 兜底」，
-    /// v5 = 只让「像人名」的自定义相簿参与归类，v6 = 同一张照片只归一个人物。
+    /// v5 = 只让「像人名」的自定义相簿参与归类，v6 = 同一张照片只归一个人物，
+    /// v7 = 人脸特征换成 ArcFace 模型（余弦距离阈值）。
     /// 版本变旧会在启动时自动重聚一次。
     private static let thresholdVersionKey = "clusterThresholdVersion"
-    private static let thresholdVersion = 6
+    private static let thresholdVersion = 7
 
     init() {
         viewedAlbumNames = Set(UserDefaults.standard.stringArray(forKey: Self.viewedAlbumsKey) ?? [])
@@ -136,7 +137,7 @@ final class AppModel: ObservableObject {
     func recluster() {
         guard !isReclustering else { return }
         isReclustering = true
-        let threshold = Float(ClusterThreshold.calibrated(clusterThreshold))
+        let threshold = ClusterThreshold.euclideanLimit(forCosineDistance: clusterThreshold)
         Task {
             let albums = await Self.albumNameIndex(store: store)
             await ClusterRebuilder.rebuildInBackground(store: store,

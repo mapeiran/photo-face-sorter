@@ -234,9 +234,18 @@ final class ScanCoordinator: ObservableObject {
                 if count > 0 { facePhotos += 1 }
                 faceCount += count
 
-                for face in faces {
-                    if let crop = detector.cropFace(from: image, boundingBox: face.boundingBox),
-                       let feature = await embedOffMain(crop), !feature.isEmpty {
+                // 对齐 + ArcFace 特征：先按 5 点相似变换把脸摆正到 112×112，再提特征
+                let imageSize = CGSize(width: image.width, height: image.height)
+                if let pixelSource = RGBAPixelSource(image: image) {
+                    for face in faces {
+                        guard let points = detector.landmarks5(from: face, imageSize: imageSize),
+                              let transform = FaceAlignmentService.similarityTransform(
+                                  from: points.templateOrdered,
+                                  to: FaceAlignmentService.template),
+                              let aligned = FaceAlignmentService.alignedFace(from: pixelSource,
+                                                                             transform: transform),
+                              let feature = await embedOffMain(aligned),
+                              !feature.isEmpty else { continue }
                         samples.append(FaceSample(assetLocalIdentifier: asset.localIdentifier,
                                                   boundingBox: face.boundingBox,
                                                   feature: feature))
@@ -312,8 +321,8 @@ final class ScanCoordinator: ObservableObject {
     }
 
     private nonisolated static func currentThreshold() -> Float {
-        let stored = UserDefaults.standard.object(forKey: "clusterThreshold") as? Double
-        return Float(ClusterThreshold.calibrated(stored ?? ClusterThreshold.defaultValue))
+        let stored = UserDefaults.standard.object(forKey: ClusterThreshold.defaultsKey) as? Double
+        return ClusterThreshold.euclideanLimit(forCosineDistance: stored ?? ClusterThreshold.defaultValue)
     }
 
     // MARK: - 离主线程计算

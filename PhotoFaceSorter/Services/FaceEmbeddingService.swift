@@ -1,58 +1,33 @@
-import Foundation
-import Vision
 import CoreGraphics
+import Foundation
 
-/// 人脸特征提取（Vision FeaturePrint）
-/// 说明：Apple 无人脸身份识别 API，此处用通用图像特征做聚类，准确度有限。
-/// 无状态，可安全地在任意线程上使用
+/// 人脸特征提取：ArcFace(MobileFaceNet) Core ML 模型，512 维，输出**已 L2 归一化**。
+///
+/// 送进来的人脸图必须是**已对齐**的 112×112（见 `FaceAlignmentService`）。
+/// 无状态，可安全地在任意线程上使用。
 final class FaceEmbeddingService: Sendable {
 
     /// 当前特征提取方式的稳定标识，会随样本人脸一起记录到缓存里。
     ///
-    /// **改动 `embedding(for:)` 的任何语义都必须同时修改这个字符串**
-    /// （换请求、换模型、改输出维度、加归一化……）。否则新旧特征会被混在一起聚类，
+    /// **改动特征语义的任何东西都必须同时改这个字符串**
+    /// （换模型、换前处理、改维度、加/去归一化……）。否则新旧特征会被混在一起聚类，
     /// 得到毫无意义的分组却不报任何错。改了它之后，`EmbeddingConsistency`
     /// 会提示用户做一次全量重扫。
-    static let signature = "vision-featureprint-256"
+    static let signature = "arcface-mobilefacenet-512"
 
-    /// 对人脸裁剪图生成特征向量
-    func embedding(for faceImage: CGImage) throws -> [Float] {
-        let request = VNGenerateImageFeaturePrintRequest()
-        let handler = VNImageRequestHandler(cgImage: faceImage, orientation: .up, options: [:])
-        try handler.perform([request])
-
-        guard let observation = request.results?.first as? VNFeaturePrintObservation else {
-            return []
-        }
-        var vector = [Float](repeating: 0, count: observation.elementCount)
-        if observation.elementType == .float {
-            _ = vector.withUnsafeMutableBytes { buffer in
-                observation.data.copyBytes(to: buffer)
-            }
-        } else if observation.elementType == .double {
-            var doubles = [Double](repeating: 0, count: observation.elementCount)
-            _ = doubles.withUnsafeMutableBytes { buffer in
-                observation.data.copyBytes(to: buffer)
-            }
-            vector = doubles.map { Float($0) }
-        }
-        return Self.downsample(vector, to: 256)
+    /// 对**已对齐**的人脸图生成 512 维单位特征
+    func embedding(for alignedFace: CGImage) throws -> [Float] {
+        let raw = FaceRecognitionModel.shared.embedding(forAlignedFace: alignedFace)
+        guard !raw.isEmpty else { return [] }
+        return Self.normalized(raw)
     }
 
-    /// 降维（分块平均），减小存储与聚类开销
-    static func downsample(_ vector: [Float], to target: Int) -> [Float] {
-        guard vector.count > target, target > 0 else { return vector }
-        let block = vector.count / target
-        guard block > 0 else { return Array(vector.prefix(target)) }
-        var result = [Float](repeating: 0, count: target)
-        for i in 0..<target {
-            var sum: Float = 0
-            let base = i * block
-            for j in 0..<block where base + j < vector.count {
-                sum += vector[base + j]
-            }
-            result[i] = sum / Float(block)
-        }
-        return result
+    /// L2 归一化：归一化后用余弦（等价于欧氏距离排序）比较，阈值才有稳定的含义。
+    static func normalized(_ vector: [Float]) -> [Float] {
+        var sum: Float = 0
+        for value in vector { sum += value * value }
+        let norm = sum.squareRoot()
+        guard norm > 1e-6 else { return vector }
+        return vector.map { $0 / norm }
     }
 }

@@ -133,15 +133,23 @@ final class ClusteringTests: XCTestCase {
         XCTAssertEqual(service.squaredDistance([1], [1, 2]), .greatestFiniteMagnitude)
     }
 
-    // MARK: - 降维
+    // MARK: - 特征归一化
 
-    func testDownsampleReducesToTargetCount() {
-        let result = FaceEmbeddingService.downsample((0..<1000).map { Float($0) }, to: 256)
-        XCTAssertEqual(result.count, 256)
+    func testNormalizedVectorHasUnitLength() {
+        let normalized = FaceEmbeddingService.normalized([3, 4])
+        XCTAssertEqual(normalized[0], 0.6, accuracy: 1e-6)
+        XCTAssertEqual(normalized[1], 0.8, accuracy: 1e-6)
     }
 
-    func testDownsampleLeavesShortVectorsUnchanged() {
-        let input: [Float] = [1, 2, 3]
-        XCTAssertEqual(FaceEmbeddingService.downsample(input, to: 256), input)
+    func testNormalizedZeroVectorIsReturnedUnchanged() {
+        XCTAssertEqual(FaceEmbeddingService.normalized([0, 0]), [0, 0])
+    }
+
+    /// 归一化后：平方欧氏距离 = 2 × 余弦距离，聚类阈值换算就依赖这个恒等式
+    func testSquaredDistanceEqualsTwiceCosineDistance() {
+        let a = FaceEmbeddingService.normalized([1, 2, 3])
+        let b = FaceEmbeddingService.normalized([3, 1, 2])
+        let cosine = zip(a, b).reduce(Float(0)) { $0 + $1.0 * $1.1 }
+        XCTAssertEqual(service.squaredDistance(a, b), 2 * (1 - cosine), accuracy: 1e-5)
     }
 }

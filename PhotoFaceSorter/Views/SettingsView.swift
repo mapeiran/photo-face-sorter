@@ -42,7 +42,8 @@ struct SettingsView: View {
                         Slider(value: $model.clusterThreshold,
                                in: ClusterThreshold.range,
                                step: ClusterThreshold.step)
-                        Text("越小分组越细（同一人易被拆开）；越大越粗（不同人易被合并）。"
+                        Text("余弦距离：越小分组越细（同一人易被拆开）；越大越粗（不同人易被合并）。"
+                             + "当前用的是 ArcFace 人脸识别模型，改完建议重新聚类试试。"
                              + "自动分组会优先用照片所在相簿的名字命名。")
                             .font(.footnote)
                             .foregroundColor(.secondary)
