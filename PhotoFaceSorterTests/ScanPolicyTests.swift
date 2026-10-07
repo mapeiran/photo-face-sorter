@@ -131,87 +131,34 @@ final class ScanPolicyTests: XCTestCase {
                        "成功确认没有脸之后不应反复重扫")
     }
 
-    // MARK: - 扫描范围（ScanScope）
+    // MARK: - 已忽略 / 已跳过的照片（shouldScan）
 
-    func testLoosePhotosScopeSkipsAlbumPhotos() {
-        XCTAssertTrue(ScanScope.loosePhotos.contains(isInAlbum: false))
-        XCTAssertFalse(ScanScope.loosePhotos.contains(isInAlbum: true))
-    }
-
-    func testAlbumPhotosScopeOnlyTakesAlbumPhotos() {
-        XCTAssertFalse(ScanScope.albumPhotos.contains(isInAlbum: false))
-        XCTAssertTrue(ScanScope.albumPhotos.contains(isInAlbum: true))
-    }
-
-    func testAllPhotosScopeTakesEverything() {
-        XCTAssertTrue(ScanScope.allPhotos.contains(isInAlbum: false))
-        XCTAssertTrue(ScanScope.allPhotos.contains(isInAlbum: true))
-    }
-
-    /// 默认范围：相簿内的照片即使从没扫过也不扫（视为已归类）
-    func testDefaultScopeScansOnlyLoosePhotos() {
+    /// 排除相簿里的照片不扫（视为已归类）
+    func testExcludedAlbumPhotoIsSkipped() {
         XCTAssertFalse(ScanPlanPolicy.shouldScan(assetLocalIdentifier: "a",
                                                  modificationDate: modified,
-                                                 isInAlbum: true,
-                                                 scope: .loosePhotos,
+                                                 isExcluded: true,
+                                                 ignoredAssetIDs: [],
                                                  records: [:]))
-        XCTAssertTrue(ScanPlanPolicy.shouldScan(assetLocalIdentifier: "a",
-                                                modificationDate: modified,
-                                                isInAlbum: false,
-                                                scope: .loosePhotos,
-                                                records: [:]))
     }
 
-    /// 回归：选了「重新识别相簿内照片」却一张都不扫。
-    /// 相簿内的照片在相簿范围下是被**主动要求**识别的，不能再按「排除」处理。
-    func testAlbumScopeDoesNotTreatAlbumPhotoAsExcluded() {
-        XCTAssertTrue(ScanPlanPolicy.shouldScan(assetLocalIdentifier: "a",
+    /// 用户在归类页「跳过这张」之后，重扫也不该让它复活
+    func testIgnoredPhotoIsNeverScanned() {
+        XCTAssertFalse(ScanPlanPolicy.shouldScan(assetLocalIdentifier: "a",
+                                                 modificationDate: modified,
+                                                 isExcluded: false,
+                                                 ignoredAssetIDs: ["a"],
+                                                 records: [:]),
+                       "已跳过 / 已忽略的照片必须一直排除在扫描之外")
+        XCTAssertTrue(ScanPlanPolicy.shouldScan(assetLocalIdentifier: "b",
                                                 modificationDate: modified,
-                                                isInAlbum: true,
-                                                scope: .albumPhotos,
+                                                isExcluded: false,
+                                                ignoredAssetIDs: ["a"],
                                                 records: [:]),
-                      "相簿内的照片在「重新识别」范围下必须真的被扫到")
+                      "忽略的只是那张照片，别把其它照片一起排掉")
     }
 
-    func testAlbumScopeIgnoresLoosePhotos() {
-        XCTAssertFalse(ScanPlanPolicy.shouldScan(assetLocalIdentifier: "a",
-                                                 modificationDate: modified,
-                                                 isInAlbum: false,
-                                                 scope: .albumPhotos,
-                                                 records: [:]))
-    }
-
-    /// 「全量重扫」得同时覆盖相簿内外
-    func testAllPhotosScopeScansBoth() {
-        for isInAlbum in [true, false] {
-            XCTAssertTrue(ScanPlanPolicy.shouldScan(assetLocalIdentifier: "a",
-                                                    modificationDate: modified,
-                                                    isInAlbum: isInAlbum,
-                                                    scope: .allPhotos,
-                                                    records: [:]),
-                          "全量重扫必须覆盖 isInAlbum=\(isInAlbum) 的照片")
-        }
-    }
-
-    /// 「重新识别相簿内照片」是**主动**重扫：扫过、没改过的相簿内照片也要重认一遍
-    /// （否则换了识别模型之后点它等于什么都没做）
-    func testAlbumScopeForcesRescanEvenWhenRecordIsFresh() {
-        let record = AssetRecord(assetLocalIdentifier: "a",
-                                 scannedAt: Date(),
-                                 faceCount: 2,
-                                 modificationDate: modified)
-        XCTAssertTrue(ScanPlanPolicy.shouldScan(assetLocalIdentifier: "a",
-                                                modificationDate: modified,
-                                                isInAlbum: true,
-                                                scope: .albumPhotos,
-                                                records: ["a": record]),
-                      "相簿范围内必须忽略增量记录，强制重新识别")
-        XCTAssertTrue(ScanScope.albumPhotos.forcesRescan)
-        XCTAssertFalse(ScanScope.loosePhotos.forcesRescan)
-        XCTAssertFalse(ScanScope.allPhotos.forcesRescan)
-    }
-
-    /// 增量语义在任何范围下都保留：扫过且没改过的不再重复扫
+    /// 增量语义保留：扫过且没改过的不再重复扫（「全量扫描」靠先清缓存来重扫）
     func testShouldScanStillSkipsScannedUnchangedPhoto() {
         let record = AssetRecord(assetLocalIdentifier: "a",
                                  scannedAt: Date(),
@@ -219,13 +166,13 @@ final class ScanPolicyTests: XCTestCase {
                                  modificationDate: modified)
         XCTAssertFalse(ScanPlanPolicy.shouldScan(assetLocalIdentifier: "a",
                                                  modificationDate: modified,
-                                                 isInAlbum: true,
-                                                 scope: .allPhotos,
+                                                 isExcluded: false,
+                                                 ignoredAssetIDs: [],
                                                  records: ["a": record]))
         XCTAssertTrue(ScanPlanPolicy.shouldScan(assetLocalIdentifier: "a",
                                                 modificationDate: otherModified,
-                                                isInAlbum: true,
-                                                scope: .allPhotos,
+                                                isExcluded: false,
+                                                ignoredAssetIDs: [],
                                                 records: ["a": record]),
                       "内容改了还是要重扫")
     }

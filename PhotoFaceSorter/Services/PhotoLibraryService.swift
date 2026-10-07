@@ -129,16 +129,7 @@ final class PhotoLibraryService: Sendable {
         let skippedAssetIDs = fetchAssetIdentifiers(in: albumsExcludedFromScan())
         return LibraryPhotoCountPolicy.counts(allAssetIDs: allAssetIDs,
                                               albumAssetIDs: skippedAssetIDs,
-                                              excludedAssetIDs: [],
-                                              allAlbumAssetIDs: albumPhotoAssetIdentifiers())
-    }
-
-    /// **所有**相簿（含系统 / 同步相簿）里的照片。
-    ///
-    /// 与 `albumsExcludedFromScan()` 的区别：那一个只包含「默认扫描会跳过」的相簿
-    /// （自定义相簿 + 显式排除）。「重新识别相簿内照片」要覆盖**全部**相簿。
-    func albumPhotoAssetIdentifiers() -> Set<String> {
-        fetchAssetIdentifiers(in: fetchUserAlbums())
+                                              excludedAssetIDs: [])
     }
 
     /// 本次扫描会跳过的相簿：显式排除的相簿 + 默认跳过的自定义相簿，

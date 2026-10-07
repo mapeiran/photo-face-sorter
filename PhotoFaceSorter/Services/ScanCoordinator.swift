@@ -26,9 +26,6 @@ final class ScanCoordinator: ObservableObject {
         }
     }
 
-    /// 本次扫描覆盖哪些照片（定义见 `ScanScope`）
-    typealias Scope = ScanScope
-
     /// 现在能不能启动一次新扫描。
     ///
     /// 界面在「清空缓存」这类**破坏性准备**之前必须先问它 ——
@@ -51,8 +48,6 @@ final class ScanCoordinator: ObservableObject {
     @Published private(set) var albumPhotoCount = 0
     /// 不在任何相簿中、会被识别的散图数。
     @Published private(set) var loosePhotoCount = 0
-    /// **所有**相簿（含系统 / 同步相簿）里的照片数，用于「重新识别相簿内照片」。
-    @Published private(set) var allAlbumPhotoCount = 0
 
     // 这些服务都无状态且 Sendable，标记 nonisolated 以便在后台线程上使用
     private nonisolated let detector = FaceDetectionService()
@@ -85,14 +80,14 @@ final class ScanCoordinator: ObservableObject {
     /// - Returns: 是否真的启动了。已有扫描在跑（或暂停）时返回 `false`，
     ///   调用方要据此提示用户，而不是默默什么都不做。
     @discardableResult
-    func start(store: CacheStore, limit: Int = .max, scope: Scope = .loosePhotos) -> Bool {
+    func start(store: CacheStore, limit: Int = .max) -> Bool {
         // 只允许从「空闲/已完成」启动；否则会与仍在运行的（或已暂停的）任务并发。
-        // 一次只跑一个扫描任务 —— 全量扫描、增量扫描、重新识别互不并行、互不干扰。
+        // 一次只跑一个扫描任务 —— 全量扫描与增量扫描互不并行、互不干扰。
         guard canStartScan else { return false }
         state = .scanning
         paused = false
         stopped = false
-        runTask = Task { await run(store: store, limit: limit, scope: scope) }
+        runTask = Task { await run(store: store, limit: limit) }
         return true
     }
 
@@ -133,7 +128,6 @@ final class ScanCoordinator: ObservableObject {
             guard !Task.isCancelled else { return }
             albumPhotoCount = counts.albumPhotos
             loosePhotoCount = counts.loosePhotos
-            allAlbumPhotoCount = counts.allAlbumPhotos
         }
     }
 
@@ -152,31 +146,27 @@ final class ScanCoordinator: ObservableObject {
     }
 
     /// 枚举相册、解码缓存、算出待扫描照片 —— 全部在后台线程完成
-    private nonisolated func prepare(store: CacheStore, limit: Int, scope: Scope) async -> ScanPlan {
+    private nonisolated func prepare(store: CacheStore, limit: Int) async -> ScanPlan {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
-                continuation.resume(returning: Self.buildPlan(store: store, limit: limit, scope: scope))
+                continuation.resume(returning: Self.buildPlan(store: store, limit: limit))
             }
         }
     }
 
-    private nonisolated static func buildPlan(store: CacheStore,
-                                              limit: Int,
-                                              scope: Scope) -> ScanPlan {
+    private nonisolated static func buildPlan(store: CacheStore, limit: Int) -> ScanPlan {
         let library = PhotoLibraryService.shared
 
         let assets = library.fetchAllPhotoAssets()
         var records = store.records
 
-        // 两个「在相簿里」的集合语义**不同**，不要混用：
-        // - skippedAssetIDs：默认扫描会**跳过**的相簿（自定义 + 显式排除，可手动取消排除）。
-        //   默认扫描（`loosePhotos`）把它们视为已归类。
-        // - albumAssetIDs：**所有**相簿（含系统 / 同步相簿）。
-        //   「重新识别相簿内照片」要求覆盖**全部**相簿，而不是只覆盖默认会跳过的那些。
+        // 扫描范围 = **散图**：
+        // - 排除相簿：显式排除的 + 默认跳过的自定义相簿（可在相簿详情里手动取消排除），
+        //   这些照片视为已归类，不参与识别；
+        // - 已忽略 / 已跳过的照片：用户在归类页跳过的那张，重扫也不该复活。
         // 扫描只读相簿，不会修改任何相簿内容。
         let skippedAssetIDs = library.fetchAssetIdentifiers(in: library.albumsExcludedFromScan())
-        let albumAssetIDs = scope == .loosePhotos ? skippedAssetIDs
-                                                   : library.albumPhotoAssetIdentifiers()
+        let ignoredAssetIDs = ClassificationSkipStore.loadAssets()
 
         // 清理已从相册删除的照片记录，避免 records.json 无限增长。
         // 仅在「完全访问」下执行：受限访问时 fetch 只返回用户挑选的照片，
@@ -187,13 +177,13 @@ final class ScanCoordinator: ObservableObject {
             for id in staleIDs { records.removeValue(forKey: id) }
         }
 
-        // 增量范围：从未扫描过的 + 内容被修改过（modificationDate 变化）的照片。
-        // 具体扫哪些由 scope 决定：散图 / 相簿内 / 全部。
+        // 增量范围：从未扫描过的 + 内容被修改过（modificationDate 变化）的照片，
+        // 再排掉排除相簿与「已忽略 / 已跳过」的照片。
         let candidates = assets.filter { asset in
             ScanPlanPolicy.shouldScan(assetLocalIdentifier: asset.localIdentifier,
                                       modificationDate: asset.modificationDate,
-                                      isInAlbum: albumAssetIDs.contains(asset.localIdentifier),
-                                      scope: scope,
+                                      isExcluded: skippedAssetIDs.contains(asset.localIdentifier),
+                                      ignoredAssetIDs: ignoredAssetIDs,
                                       records: records)
         }
         // 单次上限：大相册分批扫，避免长时间占用设备/看起来像卡死。
@@ -201,12 +191,8 @@ final class ScanCoordinator: ObservableObject {
         let (pending, remaining) = ScanBatchPolicy.batch(candidates, limit: limit)
 
         var samples = store.samples
-        // 重扫的照片先丢弃旧的人脸样本，否则同一张脸会重复入库。
-        // 「主动重新识别」范围下要丢掉**全部**范围内照片的旧样本（不只是本批）：
-        // 万一本轮被单次上限截断，未扫到的那些还留着旧特征，新旧混在一起聚类就废了。
-        let rescanIDs = scope.forcesRescan
-            ? Set(candidates.map { $0.localIdentifier })
-            : Set(pending.map { $0.localIdentifier })
+        // 重扫的照片先丢弃旧的人脸样本，否则同一张脸会重复入库
+        let rescanIDs = Set(pending.map { $0.localIdentifier })
         if !rescanIDs.isEmpty {
             samples.removeAll { rescanIDs.contains($0.assetLocalIdentifier) }
         }
@@ -230,8 +216,8 @@ final class ScanCoordinator: ObservableObject {
 
     // MARK: - 扫描
 
-    private func run(store: CacheStore, limit: Int, scope: Scope) async {
-        let plan = await prepare(store: store, limit: limit, scope: scope)
+    private func run(store: CacheStore, limit: Int) async {
+        let plan = await prepare(store: store, limit: limit)
         let pending = plan.pending
         var records = plan.records
         var samples = plan.samples

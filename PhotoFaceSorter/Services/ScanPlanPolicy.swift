@@ -4,31 +4,6 @@ import Foundation
 ///
 /// 与 `ScanRecordPolicy` 配合构成完整闭环：
 /// 取不到图片时不写记录 → 这里下次仍判定为「需要扫描」，于是自动重试。
-/// 一次扫描覆盖哪些照片。
-enum ScanScope: Sendable, Equatable {
-    /// 默认增量：只扫**不在相簿里**的散图
-    case loosePhotos
-    /// 只扫**相簿内**的照片（重新识别，刷新「按相簿命名」的人脸锚点）
-    case albumPhotos
-    /// 全部照片：散图 + 相簿内（「全量重扫」用）
-    case allPhotos
-
-    /// 这个范围是不是「**主动重新识别**」：忽略增量记录，范围内的照片全部重认一遍。
-    ///
-    /// 只有 `.albumPhotos` 是 —— 它就是「重新识别相簿内照片」这个动作本身。
-    /// 普通增量扫描不受影响（扫过且没改过的照片仍然跳过）。
-    var forcesRescan: Bool { self == .albumPhotos }
-
-    /// 这张照片是否落在本次范围内（只看「在不在相簿里」）
-    func contains(isInAlbum: Bool) -> Bool {
-        switch self {
-        case .loosePhotos: return !isInAlbum
-        case .albumPhotos: return isInAlbum
-        case .allPhotos:   return true
-        }
-    }
-}
-
 enum ScanPlanPolicy {
 
     /// 这张照片是否需要扫描。
@@ -47,22 +22,19 @@ enum ScanPlanPolicy {
         return record.modificationDate != modificationDate
     }
 
-    /// 「本次范围」× 「增量判定」的合并判断。
+    /// 这张照片是否应该被本次扫描挑中。
     ///
-    /// 注意 `isExcluded` 的语义：相簿内的照片在默认范围下算「已归类、跳过」，
-    /// 但在 `.albumPhotos` / `.allPhotos` 范围下是被**主动要求**重新识别的，
-    /// 不能再按排除处理，否则会出现「选了重新识别却一张都不扫」。
+    /// 在增量判定之外还排掉「**已忽略 / 已跳过**」的照片：用户在归类页跳过的那张，
+    /// 重扫时也不该复活（跳过名单持久化在 `ClassificationSkipStore`，清缓存不会丢）。
     static func shouldScan(assetLocalIdentifier: String,
                            modificationDate: Date?,
-                           isInAlbum: Bool,
-                           scope: ScanScope,
+                           isExcluded: Bool,
+                           ignoredAssetIDs: Set<String>,
                            records: [String: AssetRecord]) -> Bool {
-        guard scope.contains(isInAlbum: isInAlbum) else { return false }
-        // 主动重新识别不看增量记录：即使扫过、没改过，也要重新提一遍特征
-        if scope.forcesRescan { return true }
+        guard !ignoredAssetIDs.contains(assetLocalIdentifier) else { return false }
         return needsScan(assetLocalIdentifier: assetLocalIdentifier,
                          modificationDate: modificationDate,
-                         isExcluded: isInAlbum && scope == .loosePhotos,
+                         isExcluded: isExcluded,
                          records: records)
     }
 }

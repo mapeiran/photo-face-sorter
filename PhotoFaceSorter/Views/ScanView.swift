@@ -8,7 +8,6 @@ struct ScanView: View {
     @State private var authorized = false
 
     @State private var showFullRescanConfirm = false
-    @State private var showAlbumRescanConfirm = false
     /// 已有扫描在跑，或状态刚好变了 —— 提示用户而不是静默失败
     @State private var showScanBusyAlert = false
     /// 扫描页相簿结构里被展开的文件夹（默认折叠）
@@ -66,7 +65,7 @@ struct ScanView: View {
         VStack(spacing: 20) {
             if needsFullRescan {
                 Text("识别方式已更新：现有的 \(model.samples.count) 个人脸特征与新版不兼容，"
-                     + "继续聚类会得到错误的分组。请用下面的「全量重扫」重新识别"
+                     + "继续聚类会得到错误的分组。请用下面的「全量扫描」重新识别"
                      + "（它会连相簿内的照片一起重认；注意人物命名会被重置）。")
                     .font(.footnote)
                     .foregroundColor(.orange)
@@ -102,16 +101,19 @@ struct ScanView: View {
                     VStack(spacing: 10) {
                         scanLimitPicker
 
-                        Button("开始扫描（增量）") {
-                            startScan(limit: scanLimit, scope: .loosePhotos)
+                        // 增量扫描：在**上一次扫描的结果**之上，只补扫还没扫过 / 内容变过的散图。
+                        Button("增量扫描") {
+                            startScan(limit: scanLimit)
                         }
                         .buttonStyle(.borderedProminent)
 
-                        Button("全量重扫") {
+                        // 全量扫描：清空缓存 + 从头重扫**全部散图**。
+                        // 散图数量与单次上限取大值 —— 上限只是为了分批，不该让全量扫描漏照片。
+                        Button("全量扫描") {
                             showFullRescanConfirm = true
                         }
                         .font(.footnote)
-                        .confirmationDialog("全量重扫会清空现有识别结果",
+                        .confirmationDialog("全量扫描会清空现有识别结果",
                                             isPresented: $showFullRescanConfirm,
                                             titleVisibility: .visible) {
                             Button("清空并重扫", role: .destructive) {
@@ -121,34 +123,14 @@ struct ScanView: View {
                                     return
                                 }
                                 model.clearFaceCache()
-                                startScan(limit: scanLimit, scope: .allPhotos)
+                                startScan(limit: fullScanLimit)
                             }
                             Button("取消", role: .cancel) {}
                         } message: {
-                            Text("所有人脸样本与人物分组（含已命名的人物）都会被删除，"
-                                 + "并重新识别全部照片（含相簿内的），此操作无法撤销。")
-                        }
-
-                        // 相簿内照片默认不参与识别（视为已归类）。换了识别方式、或在「照片」里
-                        // 新整理过相簿之后，用这个按钮把它们的脸重新认一遍，人物命名才有依据。
-                        Button("重新识别相簿内照片") {
-                            showAlbumRescanConfirm = true
-                        }
-                        .font(.footnote)
-                        .disabled(needsFullRescan)
-                        .confirmationDialog("重新识别相簿内的照片？",
-                                            isPresented: $showAlbumRescanConfirm,
-                                            titleVisibility: .visible) {
-                            Button("开始重新识别") {
-                                // 刻意不设数量上限：一次把**所有相簿**的照片重新识别完。
-                                // 清旧样本由扫描计划内部完成（原子），这里不做破坏性准备。
-                                startScan(limit: .max, scope: .albumPhotos)
-                            }
-                            Button("取消", role: .cancel) {}
-                        } message: {
-                            Text("会丢弃**所有相簿**（含系统相簿）里照片的旧人脸特征并重新识别，"
-                                 + "让「按相簿给人物命名」重新有据可依。只读相簿，不会修改任何相簿内容。"
-                                 + "共 \(coordinator.allAlbumPhotoCount) 张，本次不设数量上限。")
+                            Text("会清空现有识别结果（人脸样本、人物分组，含已命名的人物），"
+                                 + "然后从头重新识别全部散图 \(coordinator.loosePhotoCount) 张。"
+                                 + "排除的相簿、以及已忽略 / 已跳过的照片不会参与；"
+                                 + "不受单次扫描上限限制。此操作无法撤销。")
                         }
                     }
                 }
@@ -160,8 +142,8 @@ struct ScanView: View {
                 .multilineTextAlignment(.center)
 
             if coordinator.state == .finished && coordinator.total == 0 {
-                Text("没有待扫描的照片（散图都已扫描；相簿内的照片默认不参与识别，"
-                     + "要用「重新识别相簿内照片」；也可能被排除相簿过滤或未授权）")
+                Text("没有待扫描的散图了（相簿内的照片不参与识别；"
+                     + "也可能被排除相簿过滤、被跳过，或尚未授权）")
                     .font(.footnote)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
@@ -198,8 +180,8 @@ struct ScanView: View {
 
     /// 启动一次扫描。起不来（已有任务在跑 / 暂停中）就提示，而不是静默失败 ——
     /// 界面上的破坏性准备（清空缓存等）都必须在 `coordinator.canStartScan` 为真时才做。
-    private func startScan(limit: Int, scope: ScanCoordinator.Scope) {
-        if !coordinator.start(store: model.store, limit: limit, scope: scope) {
+    private func startScan(limit: Int) {
+        if !coordinator.start(store: model.store, limit: limit) {
             showScanBusyAlert = true
         }
     }
@@ -231,14 +213,14 @@ struct ScanView: View {
             }
 
             // 三个动作**各自**会识别多少张，必须分开写清楚。
-            // 之前只标了「散图会被识别」，而「全量重扫」现在连相簿内的照片一起扫，
-            // 于是按散图数量选了 1000 上限、实际却扫了 1000 —— 看起来像没按实际数量扫。
+            // 两个按钮**识别的是同一批照片**（散图），区别只在起点与上限：
+            // 增量接着上次的结果补，全量清空后从头扫。数字写清楚免得再对不上。
             VStack(alignment: .leading, spacing: 2) {
-                Text("照片总数 \(totalPhotoCount) 张")
-                Text("· 增量扫描：「开始扫描（增量）」只识别散图 \(coordinator.loosePhotoCount) 张"
-                     + "（其余 \(coordinator.albumPhotoCount) 张在默认跳过的相簿里）")
-                Text("· 全量重扫：「清空并重扫」识别全部 \(totalPhotoCount) 张（含相簿内照片）")
-                Text("· 重新识别：「重新识别相簿内照片」识别所有相簿内的 \(coordinator.allAlbumPhotoCount) 张")
+                Text("照片总数 \(totalPhotoCount) 张 = 散图 \(coordinator.loosePhotoCount) 张"
+                     + " + 已排除相簿内 \(coordinator.albumPhotoCount) 张（不参与识别）")
+                Text("· 增量扫描：在上次结果之上补扫还没扫过的散图")
+                Text("· 全量扫描：清空缓存后从头重扫全部散图（不受单次上限限制）")
+                Text("两个按钮都会跳过已忽略 / 已跳过的照片，也不会改动任何相簿内容。")
             }
             .font(.footnote)
             .foregroundColor(.secondary)
@@ -361,10 +343,20 @@ struct ScanView: View {
         ScanBatchPolicy.limit(setting: model.maxPhotosPerScan)
     }
 
-    /// 相册里的照片总数。默认跳过的相簿内 + 散图 = 全部（见 `LibraryPhotoCountPolicy`），
-    /// 也就是「全量重扫」实际会识别的张数。
+    /// 相册里的照片总数：排除相簿内 + 散图 = 全部（见 `LibraryPhotoCountPolicy`）。
     private var totalPhotoCount: Int {
         coordinator.albumPhotoCount + coordinator.loosePhotoCount
+    }
+
+    /// 全量扫描的上限：**散图数量与单次扫描上限取大值**。
+    ///
+    /// 上限的意义只是「把大相册分批」，不该让全量扫描漏掉散图；所以散图比上限多时
+    /// 就以散图数量为准（等价于不限制）。
+    private var fullScanLimit: Int {
+        let loose = coordinator.loosePhotoCount
+        // 计数还没刷新出来时别拿 0 参与取大值（那会退化成纯上限，反而漏照片）
+        guard loose > 0 else { return .max }
+        return max(loose, scanLimit)
     }
 
     /// 扫描前就能改：大相册先设个上限，避免一次跑太久像卡死。
@@ -391,8 +383,9 @@ struct ScanView: View {
         if limit == Int.max {
             return "当前不限制单次扫描数量。相册很大时建议设个上限，扫完一批自动结束、进度已保存。"
         }
-        return "单次最多扫描 \(limit) 张。这只是上限：实际待识别不足 \(limit) 张时只扫实际数量。"
-             + "扫完自动结束（进度已保存），可再次点「开始扫描」接着扫。"
+        return "增量扫描单次最多扫 \(limit) 张（只是上限：实际待识别不足时只扫实际数量）。"
+             + "扫完自动结束、进度已保存，可再次点「增量扫描」接着扫。"
+             + "「全量扫描」不看这个上限，一次扫完全部散图。"
     }
 
     private func stat(_ title: String, _ value: String) -> some View {        VStack(spacing: 4) {
