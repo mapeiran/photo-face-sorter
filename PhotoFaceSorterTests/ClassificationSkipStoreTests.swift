@@ -28,4 +28,24 @@ final class ClassificationSkipStoreTests: XCTestCase {
         defaults.set(["not-a-uuid", valid.uuidString], forKey: ClassificationSkipStore.defaultsKey)
         XCTAssertEqual(ClassificationSkipStore.load(from: defaults), [valid])
     }
+
+    // MARK: - 单张照片跳过
+
+    func testSkippedAssetsRoundTrip() {
+        let defaults = makeDefaults()
+        ClassificationSkipStore.saveAssets(["a", "b"], to: defaults)
+        XCTAssertEqual(ClassificationSkipStore.loadAssets(from: defaults), ["a", "b"])
+    }
+
+    func testSkippedAssetsEmptyByDefault() {
+        XCTAssertTrue(ClassificationSkipStore.loadAssets(from: makeDefaults()).isEmpty)
+    }
+
+    func testSkippedAssetsUseSeparateKey() {
+        let defaults = makeDefaults()
+        ClassificationSkipStore.save([UUID()], to: defaults)
+        ClassificationSkipStore.saveAssets(["photo-1"], to: defaults)
+        XCTAssertTrue(ClassificationSkipStore.loadAssets(from: defaults) == ["photo-1"])
+        XCTAssertEqual(ClassificationSkipStore.load(from: defaults).count, 1)
+    }
 }

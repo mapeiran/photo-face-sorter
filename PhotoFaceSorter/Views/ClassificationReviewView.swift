@@ -11,9 +11,12 @@ final class ClassificationReviewModel: ObservableObject {
     @Published private(set) var selection: [UUID: Set<String>] = [:]
     /// 被跳过的分组：持久化，跳过后不再展示（可在工具栏恢复）
     @Published private(set) var skippedPersonIDs: Set<UUID> = []
+    /// 被单张跳过的照片：同样持久化，不再出现在待确认里
+    @Published private(set) var skippedAssetIDs: Set<String> = []
 
     init() {
         skippedPersonIDs = ClassificationSkipStore.load()
+        skippedAssetIDs = ClassificationSkipStore.loadAssets()
     }
 
     func reload(people: [Person], samples: [FaceSample]) async {
@@ -31,8 +34,13 @@ final class ClassificationReviewModel: ObservableObject {
                                                           existingAlbumTitles: titles)
         }.value
 
-        // 跳过过的分组不再展示
-        let visible = loaded.filter { !skippedPersonIDs.contains($0.personID) }
+        // 跳过过的分组、单张跳过的照片都不再展示；整组都跳完的组直接消失
+        let visible = loaded.compactMap { item -> PendingClassification? in
+            guard !skippedPersonIDs.contains(item.personID) else { return nil }
+            var filtered = item
+            filtered.assetIDs.removeAll { skippedAssetIDs.contains($0) }
+            return filtered.assetIDs.isEmpty ? nil : filtered
+        }
         items = visible
         // 保留用户已手动取消的勾选；新出现的分组默认全选
         var merged: [UUID: Set<String>] = [:]
@@ -108,12 +116,28 @@ final class ClassificationReviewModel: ObservableObject {
         remove(personID)
     }
 
-    /// 恢复所有被跳过的分组。
-    func restoreSkipped() {
-        guard !skippedPersonIDs.isEmpty else { return }
-        skippedPersonIDs.removeAll()
-        ClassificationSkipStore.save([])
+    /// 单张照片跳过：从待确认里移除，并记住以后不再展示。
+    func skipAsset(_ assetID: String, in personID: UUID) {
+        skippedAssetIDs.insert(assetID)
+        ClassificationSkipStore.saveAssets(skippedAssetIDs)
+        removeAssets([assetID], for: personID)
     }
+
+    /// 恢复所有被跳过的分组与单张照片。
+    func restoreSkipped() {
+        guard !skippedPersonIDs.isEmpty || !skippedAssetIDs.isEmpty else { return }
+        skippedPersonIDs.removeAll()
+        skippedAssetIDs.removeAll()
+        ClassificationSkipStore.save([])
+        ClassificationSkipStore.saveAssets([])
+    }
+}
+
+/// 归类上下文里打开照片详情的目标（照片 + 它所属的分组）。
+struct ClassificationDetailTarget: Identifiable {
+    let id = UUID()
+    let assetID: String
+    let personID: UUID
 }
 
 /// 归类审核：AI 把散图识别成人物后，由你逐组确认写到哪本系统相簿。
@@ -128,8 +152,8 @@ struct ClassificationReviewView: View {
     @State private var message: String?
     /// 点缩略图 -> 全屏看图
     @State private var previewTarget: PreviewTarget?
-    /// 长按 -> 图片详情
-    @State private var detailTarget: PhotoDetailTarget?
+    /// 长按 -> 图片详情（带归类上下文，可在详情里选择 / 跳过）
+    @State private var detailTarget: ClassificationDetailTarget?
 
     private struct PreviewTarget: Identifiable {
         let id = UUID()
@@ -207,7 +231,11 @@ struct ClassificationReviewView: View {
                 PhotoViewerView(assetIdentifiers: target.assetIDs, initialIndex: target.index)
             }
             .sheet(item: $detailTarget) { target in
-                PhotoDetailView(assetLocalIdentifier: target.id)
+                PhotoDetailView(assetLocalIdentifier: target.assetID,
+                                classification: PhotoDetailClassification(
+                                    isSelected: { review.isSelected(target.assetID, in: target.personID) },
+                                    toggleSelection: { review.toggle(target.assetID, in: target.personID) },
+                                    skip: { review.skipAsset(target.assetID, in: target.personID) }))
             }
         }
     }
@@ -244,9 +272,14 @@ struct ClassificationReviewView: View {
                 Label("查看大图", systemImage: "arrow.up.left.and.arrow.down.right")
             }
             Button {
-                detailTarget = PhotoDetailTarget(id: assetID)
+                detailTarget = ClassificationDetailTarget(assetID: assetID, personID: item.personID)
             } label: {
                 Label("查看图片详情", systemImage: "info.circle")
+            }
+            Button(role: .destructive) {
+                review.skipAsset(assetID, in: item.personID)
+            } label: {
+                Label("跳过这张", systemImage: "arrow.uturn.forward")
             }
             Button {
                 PhotoLibraryService.searchSystemPhotos(forAssetLocalIdentifier: assetID)
@@ -396,6 +429,8 @@ struct ProposalPhotosView: View {
     @State private var showMoveAlbumPicker = false
     /// 删除选中的照片（移到系统「最近删除」）
     @State private var showDeleteConfirm = false
+    /// 单张照片详情（带归类上下文）
+    @State private var detailTarget: ClassificationDetailTarget?
 
     private struct Preview: Identifiable {
         let id = UUID()
@@ -514,6 +549,13 @@ struct ProposalPhotosView: View {
         .fullScreenCover(item: $preview) { preview in
             PhotoViewerView(assetIdentifiers: assetIDs, initialIndex: preview.index)
         }
+        .sheet(item: $detailTarget) { target in
+            PhotoDetailView(assetLocalIdentifier: target.assetID,
+                            classification: PhotoDetailClassification(
+                                isSelected: { review.isSelected(target.assetID, in: target.personID) },
+                                toggleSelection: { review.toggle(target.assetID, in: target.personID) },
+                                skip: { review.skipAsset(target.assetID, in: target.personID) }))
+        }
     }
 
     /// 删除当前勾选的照片（移到系统「最近删除」）
@@ -575,6 +617,16 @@ struct ProposalPhotosView: View {
             } label: {
                 Label(selected ? "取消选择" : "选择",
                       systemImage: selected ? "circle" : "checkmark.circle")
+            }
+            Button {
+                detailTarget = ClassificationDetailTarget(assetID: assetID, personID: personID)
+            } label: {
+                Label("查看图片详情", systemImage: "info.circle")
+            }
+            Button(role: .destructive) {
+                review.skipAsset(assetID, in: personID)
+            } label: {
+                Label("跳过这张", systemImage: "arrow.uturn.forward")
             }
         }
     }

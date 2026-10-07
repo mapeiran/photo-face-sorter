@@ -13,4 +13,16 @@ enum ClassificationSkipStore {
     static func save(_ ids: Set<UUID>, to defaults: UserDefaults = .standard) {
         defaults.set(ids.map { $0.uuidString }.sorted(), forKey: defaultsKey)
     }
+
+    // MARK: - 单张照片的跳过
+
+    static let assetsDefaultsKey = "skippedClassificationAssetIDs"
+
+    static func loadAssets(from defaults: UserDefaults = .standard) -> Set<String> {
+        Set(defaults.stringArray(forKey: assetsDefaultsKey) ?? [])
+    }
+
+    static func saveAssets(_ ids: Set<String>, to defaults: UserDefaults = .standard) {
+        defaults.set(ids.sorted(), forKey: assetsDefaultsKey)
+    }
 }
